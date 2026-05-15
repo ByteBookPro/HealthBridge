@@ -316,28 +316,187 @@ backend:
         comment: "✅ LEGAL TESTS PASSED (2/2): GET /api/legal/privacy returns version:2026-05-15 ✓, GET /api/legal/terms returns version:2026-05-15 ✓. All legal endpoints working correctly."
 
 frontend:
-  - task: "Onboarding → register → dashboard happy path"
+  - task: "Onboarding screen"
     implemented: true
-    working: "NA"
+    working: true
     file: "frontend/app/onboarding.tsx"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
         comment: "Pending user permission to run frontend testing."
+      - working: true
+        agent: "testing"
+        comment: "✅ Onboarding screen loads correctly with hero image, feature cards, Get Started and Sign in CTAs, Privacy/Terms links all present and functional."
+
+  - task: "Auth flows (register, login, forgot password)"
+    implemented: true
+    working: true
+    file: "frontend/app/(auth)/"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Register: validation working (weak password error shown), successful registration with trial subscription, redirects to dashboard. ✅ Login: empty field handling, wrong credentials show error, admin login successful. ✅ Forgot password: email submission working, reset token stage displayed. All auth flows production-ready."
+
+  - task: "Dashboard (/(tabs)/index)"
+    implemented: true
+    working: true
+    file: "frontend/app/(tabs)/index.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Dashboard loads with all elements: bridge status card showing Apple/Samsung connection state, activity rings (Move/Exercise/Stand), 8 metric cards (steps, heart_rate, sleep, workouts, spo2, ecg, calories, stand), sync-now button functional, AI Insights teaser card present. Greeting message and user name displayed correctly."
+
+  - task: "Watches screen (/(tabs)/watches)"
+    implemented: true
+    working: true
+    file: "frontend/app/(tabs)/watches.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Watches screen displays both seeded watches (Apple Watch Series 9 + Galaxy Watch 6 Classic) with battery, last sync, direction info. Toggle connect/disconnect working. Connect Wizard and Notification Bridge links present and functional."
+
+  - task: "Sync screen (/(tabs)/sync)"
+    implemented: true
+    working: true
+    file: "frontend/app/(tabs)/sync.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Sync screen shows per-metric toggles for all 8 metrics (steps, heart_rate, sleep, workouts, spo2, ecg, calories, stand), conflict policy selector with 4 options (latest_wins, apple_wins, samsung_wins, manual) - policy change working, audit log displaying recent sync events with live indicator."
+
+  - task: "Vault screen (/(tabs)/vault)"
+    implemented: true
+    working: true
+    file: "frontend/app/(tabs)/vault.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Vault biometric gate working (web simulates unlock after 700ms delay). Locked screen shows fingerprint icon, privacy badges (E2E, Zero-Knowledge, No Plain Storage). Unlocked screen shows JSON/CSV/GPX export buttons - all functional. Lock vault button working."
+
+  - task: "Settings screen (/(tabs)/settings)"
+    implemented: true
+    working: true
+    file: "frontend/app/(tabs)/settings.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Settings screen displays profile card with avatar and PRO/FREE badge, PRO upgrade card with trial countdown (for trial users) or manage subscription button (for PRO users), background sync and notification toggles working, migration wizard link, privacy vault link, sign out button functional (redirects to onboarding)."
+
+  - task: "Connect Wizard (/connect)"
+    implemented: true
+    working: true
+    file: "frontend/app/connect.tsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Connect wizard displays 3 path options (apple_on_android - not possible, samsung_on_iphone - partial, health_only - full). Path selection working, step-by-step navigation functional with progress bar, honest messaging about Apple Watch limitations on Android."
+
+  - task: "Notification Bridge (/notifications)"
+    implemented: true
+    working: true
+    file: "frontend/app/notifications.tsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Notification bridge screen shows status card with BLE indicator (demo mode on web), master toggle working, app allow-list with 6 apps (messages, whatsapp, calls, calendar, email, social) - toggles functional, live log displaying forwarded notifications, test button present."
+
+  - task: "Migration Wizard (/migrate)"
+    implemented: true
+    working: true
+    file: "frontend/app/migrate.tsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Migration wizard displays 2 direction options (Apple→Samsung, Samsung→Apple), direction selection working, start migration button functional, progress card shows real-time progress updates (0% → 100%), samples migrated counter incrementing, completion state with success message and dashboard link."
+
+  - task: "AI Insights (/insights)"
+    implemented: true
+    working: true
+    file: "frontend/app/insights.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ PRO users: Insights screen loads with PRO badge, generate insights button present and functional (calls Emergent LLM API), insights display with severity badges (good/info/warning/critical), weekly report section with stats breakdown. Minor: Insight generation may take 5-10s to complete. FREE users: Paywall card displayed with 'Unlock with PRO' message and upgrade button - PRO gating working correctly."
+
+  - task: "Admin Panel (/admin)"
+    implemented: true
+    working: true
+    file: "frontend/app/admin/index.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Admin panel (admin-only) displays 6 KPI tiles (total users, PRO users, MRR, syncs 24h, active subs, pushes sent), 4 tabs working: Overview (stats + quick actions), Users (list with search, grant PRO, cancel sub buttons), Broadcast (push notification form with title/body inputs, send button), Audit (sync events + notifications log). Admin authorization working correctly."
+
+  - task: "Legal pages (/privacy, /terms)"
+    implemented: true
+    working: true
+    file: "frontend/app/privacy.tsx, frontend/app/terms.tsx"
+    stuck_count: 0
+    priority: "low"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Both privacy policy and terms of service pages load correctly with full legal content, back navigation working."
+
+  - task: "Tab navigation and safe area"
+    implemented: true
+    working: true
+    file: "frontend/app/(tabs)/_layout.tsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Bottom tab bar visible on all tab screens (Dashboard, Watches, Sync, Vault, Settings), direct navigation to each tab working via URL, safe area respected on mobile viewport (390x844). Minor: Tab bar text click has overlay interception issue (React Native Web), but tab functionality works via direct navigation."
 
 metadata:
   created_by: "main_agent"
-  version: "1.2"
-  test_sequence: 2
-  run_ui: false
+  version: "1.3"
+  test_sequence: 3
+  run_ui: true
 
 test_plan:
   current_focus: []
   stuck_tasks: []
-  test_all: false
+  test_all: true
   test_priority: "high_first"
 
 agent_communication:
@@ -345,3 +504,7 @@ agent_communication:
     message: "Pre-publish QA sweep for HealthBridge Vault. Fixed a Python syntax error in server.py (orphan JS-style comments after admin_audit endpoint). Recreated backend/.env (with EMERGENT_LLM_KEY) and frontend/.env (with correct preview URL). Updated app.json with bundleIdentifier, package, buildNumber/versionCode, slug, and ITSAppUsesNonExemptEncryption=false. Backend is up at :8001 and admin (admin@healthbridge.app / ySk4rWp4nSn5KsB8WvI4iF) is auto-seeded. Please run the full backend test suite, focusing on PRO gating (402 for free users), Stripe dev-mode upgrade flow, Admin endpoints with the admin account, AI insights via Emergent LLM key, migration wizard progress, and notif bridge settings/log."
   - agent: "testing"
     message: "✅ COMPREHENSIVE BACKEND QA COMPLETE - ALL 56 TESTS PASSED (14 tasks, 0 failures, 0 critical issues). Tested: Auth flow (8 tests) ✓, Watches (2 tests) ✓, Metrics (5 tests) ✓, Sync (5 tests) ✓, Vault export (2 tests) ✓, Push notifications (3 tests) ✓, Billing dev mode (4 tests) ✓, Admin endpoints (7 tests) ✓, Migration wizard (3 tests) ✓, Notification bridge (5 tests) ✓, PRO gating (3 tests - all correctly return 402 for free users) ✓, PRO features (7 tests - Goals CRUD, Weekly report, AI Insights via Emergent LLM) ✓, Legal endpoints (2 tests) ✓. Key validations: PRO gating working correctly (free users get 402), Stripe dev mode upgrade flow working, Admin endpoints properly authorized, AI insights successfully calling Emergent LLM (gpt-4o-mini) and generating 4 insights, Migration wizard progress simulation working, Notification bridge app filtering working. Backend is production-ready for app store publish."
+  - agent: "main"
+    message: "Backend QA complete. Now requesting comprehensive frontend QA sweep covering all routes: onboarding, auth flows, dashboard, watches, sync, vault, settings, connect wizard, notifications, migrate, insights (PRO + paywall), admin panel, legal pages, and tab navigation. Test on mobile viewport (390x844) with admin credentials and new user registration."
+  - agent: "testing"
+    message: "✅ COMPREHENSIVE FRONTEND QA COMPLETE - ALL 14 SCREENS TESTED, 0 CRITICAL BLOCKERS. Tested 17 major flows: Onboarding ✓, Register (with validation) ✓, Login (with error handling) ✓, Dashboard (bridge status, rings, 8 metrics, sync) ✓, Watches (Apple+Samsung, toggle, wizard links) ✓, Sync (metric toggles, conflict policy, audit log) ✓, Vault (biometric gate, JSON/CSV/GPX export) ✓, Settings (profile, PRO card, toggles, sign out) ✓, Connect Wizard (path selection, steps) ✓, Notification Bridge (app toggles, log) ✓, Migration Wizard (progress tracking) ✓, AI Insights (PRO screen + paywall) ✓, Admin Panel (6 KPIs, 4 tabs, search, broadcast) ✓, Forgot Password ✓, Legal Pages ✓, Tab Navigation ✓, Back Navigation ✓. Console: Only expected warnings (expo-notifications on web, deprecated props.pointerEvents). Network: No 4xx/5xx errors except expected 402 for PRO endpoints. Minor: Tab bar text click has overlay interception (React Native Web), but direct navigation works. App is production-ready for App Store / Play Store publish."
