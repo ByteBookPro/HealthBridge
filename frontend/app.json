@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "HealthBridge Vault",
-    "slug": "frontend",
+    "slug": "healthbridge-vault",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -10,14 +10,21 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
+      "bundleIdentifier": "app.healthbridge.vault",
+      "buildNumber": "1",
       "infoPlist": {
         "NSFaceIDUsageDescription": "Unlock your encrypted HealthBridge Vault.",
-        "NSHealthShareUsageDescription": "Read your Apple Health data to bridge across ecosystems.",
-        "NSHealthUpdateUsageDescription": "Write bridged data into Apple Health.",
-        "NSBluetoothAlwaysUsageDescription": "Connect to your watch over Bluetooth."
+        "NSHealthShareUsageDescription": "Bridge Apple Health data across watches.",
+        "NSHealthUpdateUsageDescription": "Save bridged data to Apple Health.",
+        "NSBluetoothAlwaysUsageDescription": "Connect to your watch over Bluetooth.",
+        "NSBluetoothPeripheralUsageDescription": "Pair with your watch over Bluetooth.",
+        "NSUserNotificationsUsageDescription": "Mirror notifications to your watch.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
+      "package": "app.healthbridge.vault",
+      "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#050507"
@@ -26,6 +33,7 @@
       "permissions": [
         "USE_BIOMETRIC",
         "USE_FINGERPRINT",
+        "POST_NOTIFICATIONS",
         "android.permission.health.READ_STEPS",
         "android.permission.health.WRITE_STEPS",
         "android.permission.health.READ_HEART_RATE",
