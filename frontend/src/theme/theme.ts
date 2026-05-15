@@ -1,0 +1,43 @@
+export const theme = {
+  colors: {
+    bg: '#050507',
+    bg2: '#0A0A0E',
+    bg3: '#12121A',
+    glass: 'rgba(255,255,255,0.08)',
+    glassMed: 'rgba(255,255,255,0.12)',
+    glassHeavy: 'rgba(255,255,255,0.16)',
+    border: 'rgba(255,255,255,0.10)',
+    borderStrong: 'rgba(255,255,255,0.20)',
+    teal: '#2DD4BF',
+    emerald: '#10B981',
+    tealDeep: '#0F766E',
+    navy: '#1E3A8A',
+    apple: '#F3F4F6',
+    samsung: '#3B82F6',
+    warning: '#F59E0B',
+    danger: '#EF4444',
+    text: '#FFFFFF',
+    textDim: '#9CA3AF',
+    textMute: '#6B7280',
+  },
+  gradients: {
+    aurora: ['#1E3A8A', '#0F766E', '#10B981'] as const,
+    bridge: ['#F3F4F6', '#3B82F6', '#2DD4BF'] as const,
+    primaryBtn: ['#3B82F6', '#10B981'] as const,
+    vaultGlow: ['rgba(45,212,191,0.25)', 'rgba(5,5,7,0)'] as const,
+    cardSheen: ['rgba(255,255,255,0.10)', 'rgba(255,255,255,0.02)'] as const,
+  },
+  space: { xs: 4, sm: 8, md: 16, lg: 24, xl: 32, xxl: 48, xxxl: 64 },
+  radii: { sm: 8, md: 16, lg: 24, xl: 32, full: 9999 },
+  font: {
+    heading: 'Outfit_700Bold',
+    headingMed: 'Outfit_600SemiBold',
+    headingReg: 'Outfit_500Medium',
+    body: 'Manrope_400Regular',
+    bodyMed: 'Manrope_500Medium',
+    bodySemi: 'Manrope_600SemiBold',
+    bodyBold: 'Manrope_700Bold',
+  },
+};
+
+export type Theme = typeof theme;
