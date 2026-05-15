@@ -1115,12 +1115,6 @@ async def admin_audit(user=Depends(admin_only), limit: int = 100):
     return {"sync_events": events, "notifications": notifications}
 
 
-  // Existing trial users should also get the trial flag on /auth/me
-  // (the migration is automatic — older "free/inactive" users see Free plan)
-  if not existing.get("is_admin") and existing.get("subscription", {}).get("plan") == "free":
-        # Grandfather: keep them on free. New users get trials automatically.
-        pass
-
 # ---------- Privacy/legal endpoints (raw markdown for external indexing) ----------
 @api.get("/legal/privacy")
 async def get_privacy():
