@@ -1,35 +1,54 @@
-# HealthBridge Vault — PRD
+# HealthBridge Vault — PRD (v2)
 
 ## Vision
-A premium, dark-first, glassmorphism mobile app that bridges Apple Health, Samsung Health and Google Fit so users can use Apple Watch with Android phones and Galaxy Watch with iPhones — without losing any health data.
+Cross-ecosystem health-data bridge with full-stack mobile app, premium UI, **paid subscription tier**, and a **web admin portal** for CRM, subscriptions, broadcasts and audit.
 
-## Tech Stack
-- Frontend: Expo SDK 54 (React Native + expo-router), expo-blur, expo-linear-gradient, react-native-reanimated, react-native-svg, expo-secure-store, expo-local-authentication, @expo-google-fonts/{outfit,manrope}
-- Backend: FastAPI + Motor (MongoDB) + bcrypt + PyJWT
-- Auth: JWT (access 60min / refresh 14 days), tokens stored via expo-secure-store (`@/src/utils/storage`)
-- Biometric: expo-local-authentication (gates the Privacy Vault); web falls back to simulated unlock
+## Stack
+- **Frontend**: Expo SDK 54 (React Native + expo-router), expo-blur, expo-linear-gradient, react-native-reanimated, react-native-svg, expo-secure-store, expo-local-authentication, expo-notifications, expo-web-browser, @expo-google-fonts/{outfit,manrope}.
+- **Backend**: FastAPI + Motor (MongoDB) + bcrypt + PyJWT + Stripe + httpx.
+- **Native bridge** (drop-in via EAS dev build): react-native-health (iOS HealthKit) and react-native-health-connect (Android).
 
-## Implemented Features (MVP)
-1. **Onboarding** — premium hero, value props, primary/secondary CTAs
-2. **Auth** — register/login/refresh/me with JWT; demo credentials auto-seed full account
-3. **Dashboard** — greeting header, bridge status (Apple ⇄ Vault ⇄ Samsung), animated Activity Rings (Move/Exercise/Stand), 5+ metric cards (steps, heart rate, sleep, SpO₂, ECG, calories) with sparklines, platform badges and delta chips
-4. **Watches** — Apple Watch + Galaxy Watch cards, battery, last-sync, one-tap toggle (connect/disconnect via `/api/watches/{id}/toggle`)
-5. **Sync** — per-metric bidirectional toggles, conflict resolution policy selector (latest_wins / apple_wins / samsung_wins / manual), live audit log of recent sync events with direction arrows
-6. **Vault** — biometric gate (FaceID/Touch/passcode → simulated on web), encrypted-archive badges, manual export (JSON / CSV / GPX)
-7. **Settings** — profile, background-sync toggle, notifications toggle, permissions/audit shortcuts, sign-out
+## Implemented features
 
-## Backend Endpoints (all `/api`)
-- `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh`, `GET /auth/me`
-- `GET /watches`, `POST /watches/{id}/toggle`
-- `GET /metrics/summary`, `POST /metrics/sync-now`
-- `GET /sync/preferences`, `PUT /sync/preferences/{metric}`
-- `GET /sync/policy`, `PUT /sync/policy`
-- `GET /sync/events?limit=N`
-- `GET /vault/export?fmt=json|csv|gpx`
+### User app (`/(tabs)/*` and `/(auth)/*`)
+1. Onboarding · Login · Register · **Forgot password (token-based)** · Auto-login
+2. Dashboard — bridge status card, animated Activity Rings, metric cards, sync-now
+3. Watches — Apple Watch + Galaxy Watch with connect/disconnect toggle
+4. Sync — per-metric bidirectional switches, conflict policy, live audit log
+5. Vault — biometric gate (FaceID/Touch/passcode) + JSON/CSV/GPX export
+6. Settings — profile, **PRO upgrade card with Stripe checkout**, **Manage subscription via Stripe portal**, **Admin Portal link for admins**, background-sync, notifications, audit, sign-out
 
-## What is mocked vs real
-- ✅ Real: JWT auth, MongoDB persistence, all CRUD, audit log writes, sync-now jitter.
-- 🧪 MOCKED: Native HealthKit / Health Connect / Samsung Health bridges and Apple Watch / Galaxy Watch live BLE data. These require a custom EAS dev build with `react-native-health` / `react-native-health-connect` / Samsung Health SDK — config and permissions are already declared in `app.json`.
+### Admin web (`/admin`)
+1. Overview — total users / PRO / MRR / syncs 24h / active subs / pushes
+2. Users — search, grant PRO, cancel subscription, ADMIN/PRO tags
+3. Broadcast — push to all registered devices
+4. Audit — last 100 sync events + last 100 notifications globally
 
-## Premium business hook
-Privacy Vault export as portable archive + "PRO" badge on profile is the seed for a $4.99/mo subscription (raw health export + multi-watch bridging) — primed for Stripe later.
+### Backend (`/api/*`)
+- Auth: register / login / refresh / me / **profile update** / **change password** / **forgot+reset password**
+- Watches: list, toggle
+- Metrics: summary, sync-now, **ingest** (native bridge → cloud)
+- Sync: prefs, policy, events
+- Vault: export
+- **Push**: register token, test send, broadcast
+- **Billing**: checkout (Stripe), customer portal, webhook (idempotent), DB persistence of plan/period/cancel-at-end
+- **Admin**: stats, users (search), set plan, cancel sub, broadcast, global audit
+
+## Mocked vs real
+- ✅ Real: JWT auth, MongoDB persistence, all CRUD, audit log, sync-now jitter, **Stripe Checkout against test key**, **Expo Push** (works as soon as a real push token registers), **idempotent webhook**, admin RBAC.
+- 🧪 Real **but** Expo Go preview can't load the native modules: HealthKit / Health Connect / Samsung Health bridge code (`/app/frontend/src/services/healthBridge.ts`) — verified, configured, and ready for `eas build --profile development`.
+
+## Subscription economics
+- HealthBridge PRO: $4.99 / mo (Stripe price_data, USD).
+- MRR formula in admin: `active_subscriptions × 4.99`.
+- Free tier permanent: dashboard + last-30-days export.
+
+## Files added in v2
+- `/app/frontend/app/admin/_layout.tsx`, `/app/frontend/app/admin/index.tsx` (web admin portal)
+- `/app/frontend/app/(auth)/forgot.tsx`
+- `/app/frontend/src/services/healthBridge.ts`, `pushNotifications.ts`
+- `/app/frontend/eas.json`
+- `/app/docs/ARCHITECTURE.md`, `NATIVE_BRIDGE.md`, `EAS_BUILD.md`, `PUBLISHING_KIT.md`, `DATA_SAFETY.md`, `PRIVACY_POLICY.md`, `TERMS.md`, `ADMIN_PORTAL.md`
+
+## Test credentials
+See `/app/memory/test_credentials.md`. Demo `demo@healthbridge.app / Demo1234!` (FREE) and admin `admin@healthbridge.app / Admin1234!` (PRO + admin).

@@ -1,3 +1,4 @@
+import React, { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -9,8 +10,19 @@ import {
   Manrope_400Regular, Manrope_500Medium, Manrope_600SemiBold, Manrope_700Bold,
 } from '@expo-google-fonts/manrope';
 import { View, ActivityIndicator } from 'react-native';
-import { AuthProvider } from '@/src/context/AuthContext';
+import { AuthProvider, useAuth } from '@/src/context/AuthContext';
 import { theme } from '@/src/theme/theme';
+import { registerForPushAsync } from '@/src/services/pushNotifications';
+
+function PushRegistrar() {
+  const { isAuthed } = useAuth();
+  useEffect(() => {
+    if (isAuthed) {
+      registerForPushAsync().catch(() => {});
+    }
+  }, [isAuthed]);
+  return null;
+}
 
 export default function RootLayout() {
   const [loaded] = useFonts({
@@ -29,6 +41,7 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
+        <PushRegistrar />
         <StatusBar style="light" />
         <Stack
           screenOptions={{

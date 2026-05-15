@@ -80,7 +80,25 @@ export type AuthOut = {
   expires_in: number;
 };
 
-export type User = { id: string; email: string; name?: string | null; created_at: string };
+export type User = {
+  id: string;
+  email: string;
+  name?: string | null;
+  created_at: string;
+  is_admin?: boolean;
+  subscription?: {
+    plan: 'free' | 'pro';
+    status: string;
+    current_period_end?: string | null;
+    cancel_at_period_end?: boolean;
+    stripe_customer_id?: string | null;
+  };
+};
+
+export type AdminStats = {
+  total_users: number; pro_users: number; active_subscriptions: number;
+  syncs_24h: number; notifications_sent: number; mrr_usd: number;
+};
 
 export type Watch = {
   id: string;
@@ -149,4 +167,46 @@ export const api = {
     request<ConflictPolicy>('/sync/policy', { method: 'PUT', body: JSON.stringify(p) }),
   events: (limit = 30) => request<SyncEvent[]>(`/sync/events?limit=${limit}`),
   export: (fmt = 'json') => request<any>(`/vault/export?fmt=${fmt}`),
+
+  // Profile / password
+  updateProfile: (name: string) => request<User>('/auth/me', { method: 'PATCH', body: JSON.stringify({ name }) }),
+  changePassword: (current_password: string, new_password: string) =>
+    request<{ ok: boolean }>('/auth/password/change', { method: 'POST',
+      body: JSON.stringify({ current_password, new_password }) }),
+  forgotPassword: (email: string) =>
+    request<{ ok: boolean; reset_token_dev_only?: string }>('/auth/password/forgot', {
+      method: 'POST', body: JSON.stringify({ email }) }),
+  resetPassword: (token: string, new_password: string) =>
+    request<{ ok: boolean }>('/auth/password/reset', { method: 'POST',
+      body: JSON.stringify({ token, new_password }) }),
+
+  // Push
+  registerPush: (token: string, platform: 'ios' | 'android' | 'web', app_version?: string) =>
+    request<{ ok: boolean }>('/push/register', { method: 'POST',
+      body: JSON.stringify({ token, platform, app_version }) }),
+  pushTest: () => request<{ sent: number }>('/push/test', { method: 'POST' }),
+
+  // Billing
+  checkout: (success_path?: string, cancel_path?: string) =>
+    request<{ url: string; id: string }>('/billing/checkout', { method: 'POST',
+      body: JSON.stringify({ success_path, cancel_path }) }),
+  portal: () => request<{ url: string }>('/billing/portal', { method: 'POST' }),
+
+  // Native bridge → cloud
+  ingest: (samples: any[]) =>
+    request<{ ingested: number }>('/metrics/ingest', { method: 'POST',
+      body: JSON.stringify({ samples }) }),
+
+  // Admin
+  adminStats: () => request<AdminStats>('/admin/stats'),
+  adminUsers: (q?: string) =>
+    request<User[]>(`/admin/users${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+  adminSetPlan: (user_id: string, plan: 'free' | 'pro') =>
+    request<{ ok: boolean }>(`/admin/users/${user_id}/plan?plan=${plan}`, { method: 'POST' }),
+  adminCancelSub: (user_id: string, immediate = false) =>
+    request<{ ok: boolean }>(`/admin/users/${user_id}/cancel?immediate=${immediate}`, { method: 'POST' }),
+  adminBroadcast: (title: string, body: string, data?: any) =>
+    request<{ recipients: number; sent: number }>('/admin/broadcast', {
+      method: 'POST', body: JSON.stringify({ title, body, data }) }),
+  adminAudit: () => request<{ sync_events: any[]; notifications: any[] }>('/admin/audit'),
 };

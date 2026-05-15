@@ -106,6 +106,13 @@ export default function Login() {
                 <AppText size={13} weight="semi" color={theme.colors.teal}>Create an account</AppText>
               </AppText>
             </Pressable>
+            <Pressable
+              onPress={() => router.push('/(auth)/forgot')}
+              style={{ alignItems: 'center', paddingVertical: 4 }}
+              testID="login-forgot-link"
+            >
+              <AppText size={12} color={theme.colors.textMute}>Forgot your password?</AppText>
+            </Pressable>
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>

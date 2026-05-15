@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, StyleSheet, ScrollView, Switch, Pressable, Alert } from 'react-native';
+import { View, StyleSheet, ScrollView, Switch, Pressable, Alert, Platform, TextInput, Modal } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -53,13 +54,82 @@ export default function Settings() {
                   <AppText weight="semi" size={16}>{user?.name || user?.email || 'You'}</AppText>
                   <AppText size={12} color={theme.colors.textDim} style={{ marginTop: 2 }}>{user?.email}</AppText>
                 </View>
-                <View style={styles.proBadge}>
-                  <Ionicons name="diamond" size={10} color={theme.colors.teal} />
-                  <AppText size={10} weight="semi" color={theme.colors.teal} style={{ marginLeft: 4 }}>PRO</AppText>
-                </View>
+                {user?.subscription?.plan === 'pro' ? (
+                  <View style={styles.proBadge}>
+                    <Ionicons name="diamond" size={10} color={theme.colors.teal} />
+                    <AppText size={10} weight="semi" color={theme.colors.teal} style={{ marginLeft: 4 }}>PRO</AppText>
+                  </View>
+                ) : (
+                  <View style={[styles.proBadge, { borderColor: theme.colors.border, backgroundColor: theme.colors.glass }]}>
+                    <AppText size={10} weight="semi" color={theme.colors.textDim}>FREE</AppText>
+                  </View>
+                )}
               </View>
             </GlassCard>
           </Animated.View>
+
+          {/* PRO upgrade / manage */}
+          <Animated.View entering={FadeInDown.delay(40).duration(400)}>
+            <GlassCard style={{ marginTop: theme.space.md }} glow testID="pro-card">
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Ionicons name="diamond" size={20} color={theme.colors.teal} />
+                <AppText weight="heading" size={18} style={{ marginLeft: 10, letterSpacing: -0.3 }}>
+                  {user?.subscription?.plan === 'pro' ? 'HealthBridge PRO' : 'Upgrade to PRO'}
+                </AppText>
+              </View>
+              <AppText size={12} color={theme.colors.textDim} style={{ marginTop: 8, lineHeight: 18 }}>
+                Multi-watch bridge · Raw archive export (CSV/JSON/GPX) · Real-time push · Priority support
+              </AppText>
+              <View style={{ height: 14 }} />
+              {user?.subscription?.plan === 'pro' ? (
+                <PrimaryButton
+                  title="Manage Subscription"
+                  variant="secondary"
+                  onPress={async () => {
+                    try {
+                      const r = await api.portal();
+                      if (Platform.OS === 'web') window.open(r.url, '_blank');
+                      else await WebBrowser.openBrowserAsync(r.url);
+                    } catch (e: any) { Alert.alert('Error', e?.message ?? 'Failed'); }
+                  }}
+                  testID="manage-sub-btn"
+                  icon={<Ionicons name="card-outline" size={16} color="#fff" />}
+                />
+              ) : (
+                <PrimaryButton
+                  title="Subscribe — $4.99/mo"
+                  onPress={async () => {
+                    try {
+                      const r = await api.checkout();
+                      if (Platform.OS === 'web') window.open(r.url, '_blank');
+                      else await WebBrowser.openBrowserAsync(r.url);
+                    } catch (e: any) { Alert.alert('Error', e?.message ?? 'Failed'); }
+                  }}
+                  testID="subscribe-btn"
+                  icon={<Ionicons name="rocket" size={16} color="#fff" />}
+                />
+              )}
+            </GlassCard>
+          </Animated.View>
+
+          {user?.is_admin && (
+            <Animated.View entering={FadeInDown.delay(80).duration(400)}>
+              <GlassCard style={{ marginTop: theme.space.md }}>
+                <Pressable onPress={() => router.push('/admin')} style={styles.row} testID="open-admin-btn">
+                  <View style={[styles.rowIcon, { backgroundColor: 'rgba(245,158,11,0.15)', borderColor: 'rgba(245,158,11,0.4)' }]}>
+                    <Ionicons name="shield-checkmark" size={16} color={theme.colors.warning} />
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <AppText weight="semi" size={14}>Open Admin Portal</AppText>
+                    <AppText size={11} color={theme.colors.textDim} style={{ marginTop: 2 }}>
+                      CRM, subscriptions, broadcast push, audit log
+                    </AppText>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={theme.colors.textMute} />
+                </Pressable>
+              </GlassCard>
+            </Animated.View>
+          )}
 
           <Animated.View entering={FadeInDown.delay(80).duration(400)}>
             <GlassCard style={{ marginTop: theme.space.md }}>
