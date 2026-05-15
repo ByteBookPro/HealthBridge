@@ -242,4 +242,16 @@ export const api = {
   // Metric detail (enhanced health data)
   metricDetail: (metric: string, timeRange: string = 'week') =>
     request<any>(`/metrics/${metric}/detail?time_range=${timeRange}`),
+
+  // Health setup / Universal watch connectivity
+  saveHealthSetup: (setup: {
+    platform: string;
+    watches: string[];
+    healthKitGranted?: boolean;
+    healthConnectGranted?: boolean;
+  }) => request<any>('/health/setup', { method: 'POST', body: JSON.stringify(setup) }),
+  
+  getHealthSetup: () => request<any>('/health/setup'),
+  
+  getHealthPlatforms: () => request<any>('/health/platforms'),
 };

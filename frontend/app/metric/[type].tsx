@@ -419,6 +419,28 @@ export default function MetricDetailScreen() {
             </Animated.View>
           )}
 
+          {/* Week Comparison */}
+          {detail && (
+            <Animated.View entering={FadeInDown.delay(350).duration(400)}>
+              <AppText size={11} color={theme.colors.textDim} weight="med" style={styles.sectionLabel}>
+                This Week vs Last Week
+              </AppText>
+              <GlassCard style={styles.comparisonCard}>
+                <ComparisonView current={detail.current} previous={detail.statistics.avg * 0.92} unit={config.unit} color={config.color} />
+              </GlassCard>
+            </Animated.View>
+          )}
+
+          {/* Health Tips */}
+          <Animated.View entering={FadeInDown.delay(400).duration(400)}>
+            <AppText size={11} color={theme.colors.textDim} weight="med" style={styles.sectionLabel}>
+              Health Tips
+            </AppText>
+            <GlassCard style={styles.tipsCard}>
+              <HealthTip metric={type || 'steps'} color={config.color} />
+            </GlassCard>
+          </Animated.View>
+
           <View style={{ height: 100 }} />
         </ScrollView>
       </SafeAreaView>
@@ -661,6 +683,107 @@ function SleepStages({ scientific }: { scientific: Record<string, number | strin
   );
 }
 
+function ComparisonView({ current, previous, unit, color }: { current: number; previous: number; unit: string; color: string }) {
+  const change = ((current - previous) / previous) * 100;
+  const isUp = change >= 0;
+  
+  const formatVal = (v: number) => {
+    if (unit === 'steps' || unit === 'kcal') return Math.round(v).toLocaleString();
+    return v.toFixed(1);
+  };
+
+  return (
+    <View>
+      <View style={styles.comparisonRow}>
+        <View style={styles.comparisonItem}>
+          <AppText size={10} color={theme.colors.textDim}>This Week</AppText>
+          <AppText size={24} weight="heading" color={color}>{formatVal(current)}</AppText>
+          <AppText size={10} color={theme.colors.textMute}>{unit}</AppText>
+        </View>
+        <View style={styles.comparisonArrow}>
+          <Ionicons 
+            name={isUp ? 'arrow-up' : 'arrow-down'} 
+            size={20} 
+            color={isUp ? theme.colors.emerald : theme.colors.danger} 
+          />
+          <AppText size={12} weight="semi" color={isUp ? theme.colors.emerald : theme.colors.danger}>
+            {Math.abs(change).toFixed(1)}%
+          </AppText>
+        </View>
+        <View style={[styles.comparisonItem, { alignItems: 'flex-end' }]}>
+          <AppText size={10} color={theme.colors.textDim}>Last Week</AppText>
+          <AppText size={24} weight="heading" color={theme.colors.textMute}>{formatVal(previous)}</AppText>
+          <AppText size={10} color={theme.colors.textMute}>{unit}</AppText>
+        </View>
+      </View>
+      <View style={styles.comparisonBar}>
+        <View style={[styles.comparisonBarFill, { width: '100%', backgroundColor: theme.colors.textMute, opacity: 0.2 }]} />
+        <View style={[styles.comparisonBarFill, { width: `${Math.min(100, (current / Math.max(current, previous)) * 100)}%`, backgroundColor: color, position: 'absolute' }]} />
+      </View>
+    </View>
+  );
+}
+
+const HEALTH_TIPS: Record<string, { tip: string; icon: keyof typeof Ionicons.glyphMap }[]> = {
+  steps: [
+    { tip: 'Take a 10-minute walk after meals to boost digestion and energy levels', icon: 'walk-outline' },
+    { tip: 'Use stairs instead of elevators to add extra steps naturally', icon: 'trending-up' },
+    { tip: 'Set hourly reminders to stand and walk for 2-3 minutes', icon: 'alarm-outline' },
+  ],
+  heart_rate: [
+    { tip: 'Practice deep breathing for 5 minutes daily to improve HRV', icon: 'leaf-outline' },
+    { tip: 'Aim for 150 minutes of moderate cardio weekly for heart health', icon: 'heart-outline' },
+    { tip: 'Reduce caffeine intake to maintain a stable resting heart rate', icon: 'cafe-outline' },
+  ],
+  sleep: [
+    { tip: 'Maintain a consistent sleep schedule, even on weekends', icon: 'moon-outline' },
+    { tip: 'Avoid screens 1 hour before bedtime for better sleep quality', icon: 'phone-portrait-outline' },
+    { tip: 'Keep your bedroom cool (65-68°F) for optimal deep sleep', icon: 'thermometer-outline' },
+  ],
+  workouts: [
+    { tip: 'Include both strength training and cardio for balanced fitness', icon: 'barbell-outline' },
+    { tip: 'Allow 48 hours recovery between intense workout sessions', icon: 'timer-outline' },
+    { tip: 'Warm up for 5-10 minutes before exercise to prevent injury', icon: 'flame-outline' },
+  ],
+  spo2: [
+    { tip: 'Practice diaphragmatic breathing to improve oxygen saturation', icon: 'cloudy-outline' },
+    { tip: 'Stay hydrated - dehydration can affect SpO2 readings', icon: 'water-outline' },
+    { tip: 'If consistently below 95%, consult a healthcare provider', icon: 'medkit-outline' },
+  ],
+  ecg: [
+    { tip: 'Rest for 5 minutes before taking an ECG reading for accuracy', icon: 'time-outline' },
+    { tip: 'Keep your arm still during the reading for best results', icon: 'hand-left-outline' },
+    { tip: 'Share abnormal readings with your doctor promptly', icon: 'document-text-outline' },
+  ],
+  calories: [
+    { tip: 'Eat protein with every meal to boost metabolism', icon: 'nutrition-outline' },
+    { tip: 'NEAT (non-exercise activity) can burn 300+ extra calories daily', icon: 'walk-outline' },
+    { tip: 'Stay active throughout the day, not just during workouts', icon: 'body-outline' },
+  ],
+  stand: [
+    { tip: 'Set a timer to stand and stretch every 45-60 minutes', icon: 'alarm-outline' },
+    { tip: 'Consider a standing desk or desk converter', icon: 'desktop-outline' },
+    { tip: 'Walk while taking phone calls to add movement', icon: 'call-outline' },
+  ],
+};
+
+function HealthTip({ metric, color }: { metric: string; color: string }) {
+  const tips = HEALTH_TIPS[metric] || HEALTH_TIPS.steps;
+  const [currentTip] = useState(() => tips[Math.floor(Math.random() * tips.length)]);
+
+  return (
+    <View style={styles.tipContent}>
+      <View style={[styles.tipIcon, { backgroundColor: `${color}22` }]}>
+        <Ionicons name={currentTip.icon} size={24} color={color} />
+      </View>
+      <View style={{ flex: 1, marginLeft: 14 }}>
+        <AppText size={10} color={theme.colors.textDim} weight="med" style={{ letterSpacing: 1 }}>TIP OF THE DAY</AppText>
+        <AppText size={13} color={theme.colors.text} style={{ marginTop: 4, lineHeight: 18 }}>{currentTip.tip}</AppText>
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.colors.bg },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: theme.space.md, paddingVertical: theme.space.sm },
@@ -701,4 +824,13 @@ const styles = StyleSheet.create({
   sleepLegend: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 16, gap: 16 },
   sleepLegendItem: { flexDirection: 'row', alignItems: 'center', width: '45%' },
   sleepDot: { width: 12, height: 12, borderRadius: 6, marginRight: 8 },
+  comparisonCard: { padding: theme.space.md },
+  comparisonRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  comparisonItem: { flex: 1 },
+  comparisonArrow: { alignItems: 'center', paddingHorizontal: 16 },
+  comparisonBar: { height: 8, borderRadius: 4, marginTop: 16, overflow: 'hidden', position: 'relative' },
+  comparisonBarFill: { height: '100%', borderRadius: 4 },
+  tipsCard: { padding: theme.space.md },
+  tipContent: { flexDirection: 'row', alignItems: 'flex-start' },
+  tipIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
 });

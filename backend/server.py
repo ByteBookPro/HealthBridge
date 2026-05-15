@@ -804,6 +804,116 @@ async def trigger_sync(user=Depends(current_user)):
     return {"synced": len(new_events), "timestamp": now}
 
 
+@api.post("/health/setup")
+async def save_health_setup(setup: dict, user=Depends(current_user)):
+    """Save user's health platform setup configuration."""
+    now = datetime.now(timezone.utc)
+    setup_doc = {
+        "user_id": user["id"],
+        "platform": setup.get("platform", "unknown"),
+        "watches": setup.get("watches", []),
+        "health_kit_granted": setup.get("healthKitGranted", False),
+        "health_connect_granted": setup.get("healthConnectGranted", False),
+        "icloud_connected": setup.get("icloudConnected", False),
+        "samsung_health_linked": setup.get("samsungHealthLinked", False),
+        "setup_completed": True,
+        "updated_at": now,
+    }
+    await db.health_setups.update_one(
+        {"user_id": user["id"]},
+        {"$set": setup_doc},
+        upsert=True
+    )
+    
+    # Create watch entries for selected watches
+    for watch_id in setup.get("watches", []):
+        watch_names = {
+            "apple": ("Apple Watch", "apple"),
+            "samsung": ("Galaxy Watch", "samsung"),
+            "google": ("Pixel Watch", "google"),
+            "fitbit": ("Fitbit", "fitbit"),
+            "garmin": ("Garmin", "garmin"),
+            "xiaomi": ("Mi Band", "xiaomi"),
+            "huawei": ("Huawei Watch", "huawei"),
+            "withings": ("Withings", "withings"),
+        }
+        if watch_id in watch_names:
+            name, platform = watch_names[watch_id]
+            existing = await db.watches.find_one({"user_id": user["id"], "platform": platform})
+            if not existing:
+                await db.watches.insert_one({
+                    "id": str(uuid.uuid4()),
+                    "user_id": user["id"],
+                    "platform": platform,
+                    "model": name,
+                    "os_version": "Latest",
+                    "battery": random.randint(70, 100),
+                    "last_sync_at": now,
+                    "status": "connected",
+                    "created_at": now,
+                })
+    
+    return {"status": "ok", "setup": setup_doc}
+
+
+@api.get("/health/setup")
+async def get_health_setup(user=Depends(current_user)):
+    """Get user's health platform setup configuration."""
+    setup = await db.health_setups.find_one({"user_id": user["id"]}, {"_id": 0})
+    if not setup:
+        return {"setup_completed": False}
+    return setup
+
+
+@api.get("/health/platforms")
+async def get_available_platforms():
+    """Get list of supported health platforms and watches."""
+    return {
+        "platforms": [
+            {
+                "id": "apple_healthkit",
+                "name": "Apple HealthKit",
+                "os": "ios",
+                "description": "Native iOS health data platform",
+                "features": ["steps", "heart_rate", "sleep", "workouts", "spo2", "ecg"],
+            },
+            {
+                "id": "health_connect",
+                "name": "Health Connect",
+                "os": "android",
+                "description": "Google's unified Android health API",
+                "features": ["steps", "heart_rate", "sleep", "workouts", "spo2"],
+            },
+            {
+                "id": "samsung_health",
+                "name": "Samsung Health",
+                "os": "android",
+                "description": "Samsung's health ecosystem",
+                "features": ["steps", "heart_rate", "sleep", "workouts", "spo2", "stress"],
+            },
+        ],
+        "watches": [
+            {"id": "apple", "name": "Apple Watch", "platforms": ["ios"], "sync_method": "healthkit"},
+            {"id": "samsung", "name": "Galaxy Watch", "platforms": ["android", "ios"], "sync_method": "health_connect"},
+            {"id": "google", "name": "Pixel Watch", "platforms": ["android"], "sync_method": "health_connect"},
+            {"id": "fitbit", "name": "Fitbit", "platforms": ["android", "ios"], "sync_method": "oauth"},
+            {"id": "garmin", "name": "Garmin", "platforms": ["android", "ios"], "sync_method": "oauth"},
+            {"id": "xiaomi", "name": "Xiaomi/Mi Band", "platforms": ["android", "ios"], "sync_method": "health_connect"},
+            {"id": "huawei", "name": "Huawei Watch", "platforms": ["android"], "sync_method": "health_connect"},
+            {"id": "withings", "name": "Withings", "platforms": ["android", "ios"], "sync_method": "oauth"},
+        ],
+        "cross_ecosystem": {
+            "supported": True,
+            "description": "HealthBridge syncs data between Apple HealthKit and Health Connect automatically",
+            "limitations": [
+                "Apple Watch requires iPhone for initial setup",
+                "Some metrics may have slight delays during cross-sync",
+                "ECG data cannot be written to Health Connect (read-only)",
+            ],
+        },
+    }
+
+
 @api.post("/metrics/ingest")
 async def ingest_health_batch(batch: HealthBatchIn, user=Depends(current_user)):
     """Endpoint the **native** HealthKit / Health Connect bridge posts to."""
