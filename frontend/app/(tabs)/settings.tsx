@@ -12,14 +12,24 @@ import PrimaryButton from '@/src/components/PrimaryButton';
 import AuroraBackground from '@/src/components/AuroraBackground';
 import { useAuth } from '@/src/context/AuthContext';
 import { api, type ConflictPolicy } from '@/src/api/client';
+import BiometricAuth, { BiometricStatus } from '@/src/services/biometricAuth';
 
 export default function Settings() {
   const { user, logout, refresh } = useAuth();
   const router = useRouter();
   const [policy, setPolicy] = useState<ConflictPolicy | null>(null);
+  const [biometricEnabled, setBiometricEnabled] = useState(false);
+  const [biometricStatus, setBiometricStatus] = useState<BiometricStatus | null>(null);
 
   const load = useCallback(async () => {
     try { setPolicy(await api.policy()); } catch {}
+    // Load biometric settings
+    try {
+      const status = await BiometricAuth.checkAvailability();
+      const enabled = await BiometricAuth.isEnabled();
+      setBiometricStatus(status);
+      setBiometricEnabled(enabled);
+    } catch {}
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -28,6 +38,34 @@ export default function Settings() {
     const next = { ...policy, [key]: !policy[key] };
     setPolicy(next);
     try { await api.updatePolicy(next); } catch {}
+  };
+
+  const toggleBiometric = async () => {
+    if (!biometricStatus?.available || !biometricStatus?.enrolled) {
+      Alert.alert(
+        'Biometrics Not Available',
+        'Please set up Face ID, Touch ID, or fingerprint in your device settings first.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+    
+    if (!biometricEnabled) {
+      // Enabling - verify first
+      const result = await BiometricAuth.authenticate('Enable biometric lock');
+      if (result.success) {
+        await BiometricAuth.setEnabled(true);
+        setBiometricEnabled(true);
+        Alert.alert('Enabled', `${biometricStatus.typeName} lock is now active`);
+      }
+    } else {
+      // Disabling - require auth first
+      const result = await BiometricAuth.authenticate('Disable biometric lock');
+      if (result.success) {
+        await BiometricAuth.setEnabled(false);
+        setBiometricEnabled(false);
+      }
+    }
   };
 
   return (
@@ -171,6 +209,33 @@ export default function Settings() {
           <Animated.View entering={FadeInDown.delay(160).duration(400)}>
             <GlassCard style={{ marginTop: theme.space.md }}>
               <AppText size={11} color={theme.colors.textDim} weight="med" style={styles.section}>
+                Security
+              </AppText>
+              <ToggleRow
+                icon="finger-print"
+                title={biometricStatus?.typeName || 'Biometric Lock'}
+                desc={biometricStatus?.available 
+                  ? `Require ${biometricStatus.typeName} to open app`
+                  : 'Set up biometrics in device settings'}
+                value={biometricEnabled}
+                onChange={toggleBiometric}
+                testID="settings-biometric"
+                disabled={!biometricStatus?.available || !biometricStatus?.enrolled}
+              />
+              <LinkRow 
+                icon="lock-closed-outline" 
+                title="App Lock Settings" 
+                desc="Configure timeout and sensitive actions"
+                onPress={() => Alert.alert('Coming Soon', 'Advanced lock settings will be available in the next update')}
+                testID="settings-lock"
+                last 
+              />
+            </GlassCard>
+          </Animated.View>
+
+          <Animated.View entering={FadeInDown.delay(200).duration(400)}>
+            <GlassCard style={{ marginTop: theme.space.md }}>
+              <AppText size={11} color={theme.colors.textDim} weight="med" style={styles.section}>
                 Appearance
               </AppText>
               <LinkRow icon="color-palette-outline" title="Theme & Colors" desc="Dark, light, or soothing presets" onPress={() => router.push('/appearance')} testID="settings-appearance" />
@@ -221,13 +286,13 @@ export default function Settings() {
 }
 
 function ToggleRow({
-  icon, title, desc, value, onChange, testID, last,
+  icon, title, desc, value, onChange, testID, last, disabled,
 }: {
   icon: keyof typeof Ionicons.glyphMap; title: string; desc: string;
-  value: boolean; onChange: () => void; testID?: string; last?: boolean;
+  value: boolean; onChange: () => void; testID?: string; last?: boolean; disabled?: boolean;
 }) {
   return (
-    <View style={[styles.row, !last && styles.divider]}>
+    <View style={[styles.row, !last && styles.divider, disabled && { opacity: 0.5 }]}>
       <View style={styles.rowIcon}>
         <Ionicons name={icon} size={16} color={theme.colors.teal} />
       </View>
@@ -237,11 +302,12 @@ function ToggleRow({
       </View>
       <Switch
         value={value}
-        onValueChange={onChange}
+        onValueChange={disabled ? undefined : onChange}
         trackColor={{ false: 'rgba(255,255,255,0.1)', true: 'rgba(45,212,191,0.4)' }}
         thumbColor={value ? theme.colors.teal : '#777'}
         ios_backgroundColor="rgba(255,255,255,0.1)"
         testID={testID}
+        disabled={disabled}
       />
     </View>
   );

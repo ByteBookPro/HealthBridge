@@ -5,34 +5,98 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import Animated, { FadeInDown, FadeInRight } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 import { theme } from '@/src/theme/theme';
 import AppText from '@/src/components/AppText';
 import GlassCard from '@/src/components/GlassCard';
 import ActivityRings from '@/src/components/ActivityRings';
-import MetricCard from '@/src/components/MetricCard';
+import Sparkline from '@/src/components/Sparkline';
 import AuroraBackground from '@/src/components/AuroraBackground';
-import { api, type MetricSummary, type Watch } from '@/src/api/client';
+import ConnectDeviceCard from '@/src/components/ConnectDeviceCard';
+import { api, type MetricSummary, type Watch, type CategoriesResponse } from '@/src/api/client';
 import { useAuth } from '@/src/context/AuthContext';
+
+// Metric icons mapping
+const METRIC_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+  steps: 'footsteps-outline',
+  distance: 'map-outline',
+  active_minutes: 'timer-outline',
+  floors: 'trending-up-outline',
+  calories: 'flame-outline',
+  stand: 'body-outline',
+  workouts: 'barbell-outline',
+  workout_count: 'fitness-outline',
+  vo2_max: 'speedometer-outline',
+  training_load: 'analytics-outline',
+  recovery_time: 'hourglass-outline',
+  calorie_intake: 'restaurant-outline',
+  protein: 'fish-outline',
+  carbs: 'leaf-outline',
+  fat: 'water-outline',
+  water: 'water-outline',
+  fiber: 'nutrition-outline',
+  weight: 'scale-outline',
+  bmi: 'calculator-outline',
+  body_fat: 'pie-chart-outline',
+  muscle_mass: 'fitness-outline',
+  sleep: 'moon-outline',
+  sleep_quality: 'star-outline',
+  heart_rate: 'heart-outline',
+  resting_hr: 'heart-outline',
+  hrv: 'pulse-outline',
+  blood_pressure_sys: 'speedometer-outline',
+  blood_pressure_dia: 'speedometer-outline',
+  spo2: 'water-outline',
+  respiratory_rate: 'cloudy-outline',
+  body_temp: 'thermometer-outline',
+  ecg: 'pulse-outline',
+  stress: 'sad-outline',
+};
+
+// Category colors
+const CATEGORY_COLORS: Record<string, string> = {
+  activity: '#2DD4BF',
+  exercise: '#F59E0B',
+  nutrition: '#10B981',
+  body: '#8B5CF6',
+  vitals: '#EF4444',
+};
+
+const CATEGORY_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+  activity: 'walk-outline',
+  exercise: 'barbell-outline',
+  nutrition: 'nutrition-outline',
+  body: 'body-outline',
+  vitals: 'heart-outline',
+};
 
 export default function Dashboard() {
   const { user } = useAuth();
   const router = useRouter();
   const [metrics, setMetrics] = useState<MetricSummary[]>([]);
+  const [categories, setCategories] = useState<CategoriesResponse | null>(null);
   const [watches, setWatches] = useState<Watch[]>([]);
   const [refreshing, setRefreshing] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const [lastSync, setLastSync] = useState<string | null>(null);
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['activity', 'vitals']));
 
   const load = useCallback(async () => {
     try {
-      const [m, w] = await Promise.all([api.metrics(), api.watches()]);
+      const [m, w, cats] = await Promise.all([
+        api.metricsAll(),
+        api.watches(),
+        api.metricsCategories(),
+      ]);
       setMetrics(m);
       setWatches(w);
-      if (w.length) setLastSync(w[0].last_sync_at);
+      setCategories(cats);
     } catch (e) {
-      // silent
+      // Fallback to basic metrics
+      try {
+        const [m, w] = await Promise.all([api.metrics(), api.watches()]);
+        setMetrics(m);
+        setWatches(w);
+      } catch {}
     }
   }, []);
 
@@ -44,29 +108,34 @@ export default function Dashboard() {
     setRefreshing(false);
   }, [load]);
 
-  const triggerSync = useCallback(async () => {
-    setSyncing(true);
-    try {
-      await api.syncNow();
-      await load();
-    } finally {
-      setSyncing(false);
-    }
-  }, [load]);
+  const toggleCategory = (cat: string) => {
+    setExpandedCategories(prev => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat);
+      else next.add(cat);
+      return next;
+    });
+  };
 
+  // Group metrics by category
+  const metricsByCategory = metrics.reduce((acc, m) => {
+    const cat = m.category || 'activity';
+    if (!acc[cat]) acc[cat] = [];
+    acc[cat].push(m);
+    return acc;
+  }, {} as Record<string, MetricSummary[]>);
+
+  // Get key metrics for rings
   const findMetric = (k: string) => metrics.find((x) => x.metric === k);
-  const calories = findMetric('calories');
-  const workouts = findMetric('workouts');
-  const stand = findMetric('stand');
+  const caloriesMetric = findMetric('calories');
+  const workoutsMetric = findMetric('workouts');
+  const stepsMetric = findMetric('steps');
 
   const rings = [
-    { progress: calories ? Math.min(1, calories.current / calories.goal) : 0, colorFrom: '#F97316', colorTo: '#EF4444' },
-    { progress: workouts ? Math.min(1, workouts.current / workouts.goal) : 0, colorFrom: '#10B981', colorTo: '#2DD4BF' },
-    { progress: stand ? Math.min(1, stand.current / stand.goal) : 0, colorFrom: '#3B82F6', colorTo: '#8B5CF6' },
+    { progress: caloriesMetric ? Math.min(1, caloriesMetric.current / caloriesMetric.goal) : 0, colorFrom: '#F97316', colorTo: '#EF4444' },
+    { progress: workoutsMetric ? Math.min(1, workoutsMetric.current / workoutsMetric.goal) : 0, colorFrom: '#10B981', colorTo: '#2DD4BF' },
+    { progress: stepsMetric ? Math.min(1, stepsMetric.current / stepsMetric.goal) : 0, colorFrom: '#3B82F6', colorTo: '#8B5CF6' },
   ];
-
-  const apple = watches.find((w) => w.platform === 'apple');
-  const samsung = watches.find((w) => w.platform === 'samsung');
 
   const greeting = (() => {
     const h = new Date().getHours();
@@ -74,6 +143,17 @@ export default function Dashboard() {
     if (h < 18) return 'Good afternoon';
     return 'Good evening';
   })();
+
+  const connectedDevices = watches.filter(w => w.connected).map(w => ({
+    id: w.id,
+    name: w.model,
+    platform: w.platform as any,
+    connected: w.connected,
+    battery: w.battery,
+    lastSync: w.last_sync_at,
+  }));
+
+  const categoryOrder = ['activity', 'vitals', 'exercise', 'body', 'nutrition'];
 
   return (
     <View style={styles.root} testID="dashboard-screen">
@@ -95,42 +175,194 @@ export default function Dashboard() {
               </AppText>
             </View>
             <Pressable
-              onPress={triggerSync}
-              style={styles.syncBtn}
-              testID="dashboard-sync-now-btn"
+              onPress={() => router.push('/insights')}
+              style={styles.insightBtn}
               hitSlop={8}
             >
-              <Ionicons name="sync" size={16} color={theme.colors.teal} style={syncing ? { opacity: 0.5 } : undefined} />
-              <AppText size={11} weight="semi" color={theme.colors.teal} style={{ marginLeft: 6 }}>
-                {syncing ? 'Syncing…' : 'Sync now'}
-              </AppText>
+              <Ionicons name="sparkles" size={18} color={theme.colors.teal} />
             </Pressable>
           </View>
 
-          {/* PRO AI Insights teaser */}
-          <Pressable onPress={() => router.push('/insights')} testID="open-insights">
-            <GlassCard glow style={{ marginTop: theme.space.md, padding: theme.space.md }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <View style={[styles.aiBadge]}>
-                  <Ionicons name="sparkles" size={18} color={theme.colors.teal} />
-                </View>
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <AppText weight="semi" size={14}>AI Health Insights</AppText>
-                    <View style={styles.proTag}>
-                      <AppText size={9} weight="bold" color={theme.colors.teal}>PRO</AppText>
-                    </View>
+          {/* Connect Device Card - Clean button to connect watches */}
+          <Animated.View entering={FadeInDown.duration(400)}>
+            <ConnectDeviceCard
+              devices={connectedDevices}
+              onAddDevice={() => router.push('/setup')}
+              testID="connect-device-card"
+            />
+          </Animated.View>
+
+          {/* Activity Rings Summary */}
+          <Animated.View entering={FadeInDown.delay(80).duration(400)}>
+            <Pressable onPress={() => router.push('/metric/steps')}>
+              <GlassCard style={{ marginTop: theme.space.md }} testID="rings-card">
+                <AppText size={11} color={theme.colors.textDim} weight="med" style={{ letterSpacing: 1.5, textTransform: 'uppercase' }}>
+                  Today's Progress
+                </AppText>
+                <View style={styles.ringsRow}>
+                  <ActivityRings size={140} rings={rings} thickness={12} />
+                  <View style={{ flex: 1, marginLeft: theme.space.md, gap: 10 }}>
+                    <RingLine
+                      label="Calories"
+                      value={caloriesMetric ? `${Math.round(caloriesMetric.current)}` : '—'}
+                      goal={caloriesMetric?.goal || 2200}
+                      unit="kcal"
+                      colorFrom="#F97316"
+                      colorTo="#EF4444"
+                    />
+                    <RingLine
+                      label="Exercise"
+                      value={workoutsMetric ? `${Math.round(workoutsMetric.current)}` : '—'}
+                      goal={workoutsMetric?.goal || 60}
+                      unit="min"
+                      colorFrom="#10B981"
+                      colorTo="#2DD4BF"
+                    />
+                    <RingLine
+                      label="Steps"
+                      value={stepsMetric ? `${Math.round(stepsMetric.current / 1000)}k` : '—'}
+                      goal={stepsMetric?.goal || 10000}
+                      unit="steps"
+                      colorFrom="#3B82F6"
+                      colorTo="#8B5CF6"
+                    />
                   </View>
-                  <AppText size={11} color={theme.colors.textDim} style={{ marginTop: 2 }}>
-                    Tap for personalized weekly findings & goals progress.
-                  </AppText>
                 </View>
-                <Ionicons name="chevron-forward" size={18} color={theme.colors.textMute} />
-              </View>
-            </GlassCard>
+              </GlassCard>
+            </Pressable>
+          </Animated.View>
+
+          {/* AI Insights teaser */}
+          <Pressable onPress={() => router.push('/insights')} testID="open-insights">
+            <Animated.View entering={FadeInDown.delay(120).duration(400)}>
+              <GlassCard glow style={{ marginTop: theme.space.md, padding: theme.space.md }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <View style={[styles.aiBadge]}>
+                    <Ionicons name="sparkles" size={18} color={theme.colors.teal} />
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <AppText weight="semi" size={14}>AI Health Insights</AppText>
+                      <View style={styles.proTag}>
+                        <AppText size={9} weight="bold" color={theme.colors.teal}>PRO</AppText>
+                      </View>
+                    </View>
+                    <AppText size={11} color={theme.colors.textDim} style={{ marginTop: 2 }}>
+                      Personalized health analysis & recommendations
+                    </AppText>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={theme.colors.textMute} />
+                </View>
+              </GlassCard>
+            </Animated.View>
           </Pressable>
 
+          {/* Health Metrics by Category */}
+          {categoryOrder.map((catId, catIdx) => {
+            const catMetrics = metricsByCategory[catId] || [];
+            if (catMetrics.length === 0) return null;
+            
+            const isExpanded = expandedCategories.has(catId);
+            const catColor = CATEGORY_COLORS[catId] || '#2DD4BF';
+            const catIcon = CATEGORY_ICONS[catId] || 'fitness-outline';
+            const catLabel = catId.charAt(0).toUpperCase() + catId.slice(1);
+
+            return (
+              <Animated.View key={catId} entering={FadeInDown.delay(160 + catIdx * 40).duration(400)}>
+                {/* Category Header */}
+                <Pressable onPress={() => toggleCategory(catId)} style={styles.categoryHeader}>
+                  <View style={[styles.categoryIcon, { backgroundColor: `${catColor}22`, borderColor: `${catColor}55` }]}>
+                    <Ionicons name={catIcon} size={16} color={catColor} />
+                  </View>
+                  <AppText weight="semi" size={14} style={{ flex: 1, marginLeft: 10 }}>
+                    {catLabel}
+                  </AppText>
+                  <AppText size={11} color={theme.colors.textMute} style={{ marginRight: 8 }}>
+                    {catMetrics.length} metrics
+                  </AppText>
+                  <Ionicons
+                    name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                    size={16}
+                    color={theme.colors.textMute}
+                  />
+                </Pressable>
+
+                {/* Metrics Grid */}
+                {isExpanded && (
+                  <View style={styles.metricsGrid}>
+                    {catMetrics.map((m, idx) => (
+                      <Animated.View key={m.metric} entering={FadeInRight.delay(idx * 30).duration(300)} style={styles.metricCell}>
+                        <Pressable
+                          onPress={() => router.push(`/metric/${m.metric}`)}
+                          style={({ pressed }) => [{ opacity: pressed ? 0.8 : 1 }]}
+                        >
+                          <GlassCard style={styles.metricCard}>
+                            <View style={styles.metricHeader}>
+                              <View style={[styles.metricIcon, { backgroundColor: `${catColor}18`, borderColor: `${catColor}40` }]}>
+                                <Ionicons name={METRIC_ICONS[m.metric] || 'analytics-outline'} size={14} color={catColor} />
+                              </View>
+                              {/* Source badges */}
+                              <View style={styles.sourceBadges}>
+                                {m.apple_value != null && (
+                                  <View style={styles.sourceBadge}>
+                                    <Ionicons name="logo-apple" size={8} color="#F3F4F6" />
+                                  </View>
+                                )}
+                                {m.samsung_value != null && (
+                                  <View style={[styles.sourceBadge, { backgroundColor: 'rgba(59,130,246,0.15)' }]}>
+                                    <Ionicons name="phone-portrait" size={8} color="#3B82F6" />
+                                  </View>
+                                )}
+                              </View>
+                            </View>
+                            <AppText size={9} color={theme.colors.textDim} numberOfLines={1} style={{ marginTop: 4 }}>
+                              {m.label}
+                            </AppText>
+                            <View style={styles.metricValue}>
+                              <AppText weight="heading" size={18} style={{ letterSpacing: -0.5 }}>
+                                {formatValue(m.current, m.unit)}
+                              </AppText>
+                              <AppText size={9} color={theme.colors.textMute} style={{ marginLeft: 2, marginBottom: 1 }}>
+                                {m.unit}
+                              </AppText>
+                            </View>
+                            {/* Sparkline */}
+                            {m.trend && m.trend.length > 0 && (
+                              <View style={styles.sparkContainer}>
+                                <Sparkline data={m.trend} color={catColor} width={70} height={18} />
+                              </View>
+                            )}
+                            {/* Delta indicator */}
+                            {m.delta_pct !== 0 && (
+                              <View style={[styles.delta, { backgroundColor: m.delta_pct >= 0 ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)' }]}>
+                                <Ionicons
+                                  name={m.delta_pct >= 0 ? 'trending-up' : 'trending-down'}
+                                  size={8}
+                                  color={m.delta_pct >= 0 ? theme.colors.emerald : theme.colors.danger}
+                                />
+                                <AppText
+                                  size={8}
+                                  color={m.delta_pct >= 0 ? theme.colors.emerald : theme.colors.danger}
+                                  style={{ marginLeft: 2 }}
+                                >
+                                  {Math.abs(m.delta_pct).toFixed(1)}%
+                                </AppText>
+                              </View>
+                            )}
+                          </GlassCard>
+                        </Pressable>
+                      </Animated.View>
+                    ))}
+                  </View>
+                )}
+              </Animated.View>
+            );
+          })}
+
           {/* Quick Actions */}
+          <AppText size={11} color={theme.colors.textDim} weight="med" style={styles.sectionLabel}>
+            Quick Actions
+          </AppText>
           <View style={styles.quickActionsRow}>
             <Pressable onPress={() => router.push('/water-tracking')} style={styles.quickActionBtn}>
               <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(59,130,246,0.15)' }]}>
@@ -150,85 +382,12 @@ export default function Dashboard() {
               </View>
               <AppText size={10} color={theme.colors.textDim} style={{ marginTop: 6 }}>SOS</AppText>
             </Pressable>
-            <Pressable onPress={() => router.push('/appearance')} style={styles.quickActionBtn}>
+            <Pressable onPress={() => router.push('/(tabs)/settings')} style={styles.quickActionBtn}>
               <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(139,92,246,0.15)' }]}>
-                <Ionicons name="color-palette" size={22} color="#8B5CF6" />
+                <Ionicons name="settings-outline" size={22} color="#8B5CF6" />
               </View>
-              <AppText size={10} color={theme.colors.textDim} style={{ marginTop: 6 }}>Themes</AppText>
+              <AppText size={10} color={theme.colors.textDim} style={{ marginTop: 6 }}>Settings</AppText>
             </Pressable>
-          </View>
-
-          {/* Bridge status */}
-          <Animated.View entering={FadeInDown.duration(400)}>
-            <GlassCard style={{ marginTop: theme.space.md }} glow testID="bridge-status-card">
-              <View style={styles.bridgeRow}>
-                <PlatformBadge
-                  active={!!apple?.connected}
-                  icon="logo-apple"
-                  label="Apple"
-                  color={theme.colors.apple}
-                />
-                <View style={styles.bridgePath}>
-                  <LinearGradient
-                    colors={theme.gradients.bridge as any}
-                    start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-                    style={styles.bridgeLine}
-                  />
-                  <View style={styles.bridgeDot}>
-                    <Ionicons name="shield-checkmark" size={12} color={theme.colors.teal} />
-                  </View>
-                </View>
-                <PlatformBadge
-                  active={!!samsung?.connected}
-                  icon="phone-portrait"
-                  label="Samsung"
-                  color={theme.colors.samsung}
-                />
-              </View>
-              <View style={styles.bridgeStatus}>
-                <View style={styles.statusDot} />
-                <AppText size={11} color={theme.colors.textDim}>
-                  Bridge active · Last sync {lastSync ? new Date(lastSync).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'just now'}
-                </AppText>
-              </View>
-            </GlassCard>
-          </Animated.View>
-
-          {/* Rings + summary */}
-          <Animated.View entering={FadeInDown.delay(120).duration(400)}>
-            <GlassCard style={{ marginTop: theme.space.md }} testID="rings-card">
-              <AppText size={11} color={theme.colors.textDim} weight="med" style={{ letterSpacing: 1.5, textTransform: 'uppercase' }}>
-                Activity Rings · Unified
-              </AppText>
-              <View style={styles.ringsRow}>
-                <ActivityRings size={170} rings={rings} thickness={14} />
-                <View style={{ flex: 1, marginLeft: theme.space.md, gap: 14 }}>
-                  <Pressable onPress={() => router.push('/metric/calories')}>
-                    <RingLine label="Move" value={calories ? `${Math.round(calories.current)}` : '—'} unit="kcal" colorFrom="#F97316" colorTo="#EF4444" />
-                  </Pressable>
-                  <Pressable onPress={() => router.push('/metric/workouts')}>
-                    <RingLine label="Exercise" value={workouts ? `${Math.round(workouts.current)}` : '—'} unit="min" colorFrom="#10B981" colorTo="#2DD4BF" />
-                  </Pressable>
-                  <Pressable onPress={() => router.push('/metric/stand')}>
-                    <RingLine label="Stand" value={stand ? `${Math.round(stand.current)}` : '—'} unit="hr" colorFrom="#3B82F6" colorTo="#8B5CF6" />
-                  </Pressable>
-                </View>
-              </View>
-            </GlassCard>
-          </Animated.View>
-
-          {/* Metric grid */}
-          <AppText size={11} color={theme.colors.textDim} weight="med" style={styles.sectionLabel}>
-            All Metrics
-          </AppText>
-          <View style={styles.grid}>
-            {metrics
-              .filter((m) => !['calories', 'workouts', 'stand'].includes(m.metric))
-              .map((m) => (
-                <View key={m.metric} style={styles.cell}>
-                  <MetricCard m={m} testID={`metric-${m.metric}`} />
-                </View>
-              ))}
           </View>
 
           <View style={{ height: 100 }} />
@@ -238,33 +397,33 @@ export default function Dashboard() {
   );
 }
 
-function PlatformBadge({ active, icon, label, color }: { active: boolean; icon: keyof typeof Ionicons.glyphMap; label: string; color: string }) {
-  return (
-    <View style={[styles.pBadge, { borderColor: active ? `${color}55` : theme.colors.border }]}>
-      <View style={[styles.pIcon, { backgroundColor: active ? `${color}22` : 'rgba(255,255,255,0.04)' }]}>
-        <Ionicons name={icon} size={18} color={active ? color : theme.colors.textMute} />
-      </View>
-      <AppText weight="semi" size={12} style={{ marginTop: 6 }}>{label}</AppText>
-      <AppText size={10} color={active ? theme.colors.emerald : theme.colors.textMute} style={{ marginTop: 2 }}>
-        {active ? 'Connected' : 'Offline'}
-      </AppText>
-    </View>
-  );
+function formatValue(value: number, unit: string): string {
+  if (unit === 'steps') return value >= 1000 ? `${(value / 1000).toFixed(1)}k` : value.toString();
+  if (unit === 'kcal') return Math.round(value).toLocaleString();
+  if (Number.isInteger(value)) return value.toString();
+  return value.toFixed(1);
 }
 
-function RingLine({ label, value, unit, colorFrom, colorTo }: { label: string; value: string; unit: string; colorFrom: string; colorTo: string }) {
+function RingLine({ label, value, goal, unit, colorFrom, colorTo }: {
+  label: string;
+  value: string;
+  goal: number;
+  unit: string;
+  colorFrom: string;
+  colorTo: string;
+}) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
       <LinearGradient
         colors={[colorFrom, colorTo]}
         start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-        style={{ width: 8, height: 32, borderRadius: 4 }}
+        style={{ width: 6, height: 26, borderRadius: 3 }}
       />
-      <View style={{ marginLeft: 10, flex: 1 }}>
-        <AppText size={11} color={theme.colors.textDim}>{label}</AppText>
+      <View style={{ marginLeft: 8, flex: 1 }}>
+        <AppText size={10} color={theme.colors.textDim}>{label}</AppText>
         <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-          <AppText weight="heading" size={18}>{value}</AppText>
-          <AppText size={11} color={theme.colors.textMute} style={{ marginLeft: 4 }}>{unit}</AppText>
+          <AppText weight="heading" size={16}>{value}</AppText>
+          <AppText size={9} color={theme.colors.textMute} style={{ marginLeft: 3 }}>/ {formatValue(goal, unit)}</AppText>
         </View>
       </View>
     </View>
@@ -274,13 +433,11 @@ function RingLine({ label, value, unit, colorFrom, colorTo }: { label: string; v
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.colors.bg },
   scroll: { paddingHorizontal: theme.space.lg, paddingBottom: theme.space.lg, paddingTop: theme.space.sm },
-  header: { flexDirection: 'row', alignItems: 'center', marginTop: theme.space.sm },
-  syncBtn: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 12, paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1, borderColor: 'rgba(45,212,191,0.3)',
-    backgroundColor: 'rgba(45,212,191,0.08)',
+  header: { flexDirection: 'row', alignItems: 'center', marginTop: theme.space.sm, marginBottom: theme.space.md },
+  insightBtn: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: 'rgba(45,212,191,0.12)', borderWidth: 1, borderColor: 'rgba(45,212,191,0.3)',
+    alignItems: 'center', justifyContent: 'center',
   },
   aiBadge: {
     width: 36, height: 36, borderRadius: 12,
@@ -288,31 +445,74 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   proTag: { backgroundColor: 'rgba(45,212,191,0.15)', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4 },
-  bridgeRow: { flexDirection: 'row', alignItems: 'center' },
-  pBadge: {
-    flex: 1, alignItems: 'center', paddingVertical: 8,
-    borderRadius: 16, borderWidth: 1,
+  ringsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 12 },
+  
+  // Category styles
+  categoryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: theme.space.lg,
+    paddingVertical: 8,
   },
-  pIcon: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
-  bridgePath: { flex: 1.4, alignItems: 'center', justifyContent: 'center', height: 60, marginHorizontal: 6 },
-  bridgeLine: { height: 2, width: '100%', borderRadius: 1 },
-  bridgeDot: {
-    position: 'absolute',
-    width: 28, height: 28, borderRadius: 14,
-    backgroundColor: theme.colors.bg2,
-    borderWidth: 1, borderColor: 'rgba(45,212,191,0.5)',
+  categoryIcon: {
+    width: 32, height: 32, borderRadius: 10, borderWidth: 1,
     alignItems: 'center', justifyContent: 'center',
   },
-  bridgeStatus: { flexDirection: 'row', alignItems: 'center', marginTop: 12, justifyContent: 'center' },
-  statusDot: {
-    width: 6, height: 6, borderRadius: 3, backgroundColor: theme.colors.emerald,
-    marginRight: 6,
+  
+  // Metrics grid
+  metricsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8,
   },
-  ringsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 14 },
+  metricCell: {
+    width: '31%',
+  },
+  metricCard: {
+    padding: 10,
+    minHeight: 100,
+  },
+  metricHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  metricIcon: {
+    width: 24, height: 24, borderRadius: 6, borderWidth: 1,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  sourceBadges: {
+    flexDirection: 'row',
+    gap: 2,
+  },
+  sourceBadge: {
+    width: 12, height: 12, borderRadius: 6,
+    backgroundColor: 'rgba(243,244,246,0.12)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  metricValue: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    marginTop: 2,
+  },
+  sparkContainer: {
+    marginTop: 4,
+  },
+  delta: {
+    position: 'absolute',
+    bottom: 6,
+    right: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  
+  // Quick actions
   sectionLabel: { marginTop: theme.space.lg, marginBottom: theme.space.sm, letterSpacing: 1.5, textTransform: 'uppercase' },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.sm },
-  cell: { width: '48.5%' },
-  quickActionsRow: { flexDirection: 'row', justifyContent: 'space-around', marginTop: theme.space.md, paddingVertical: theme.space.sm },
+  quickActionsRow: { flexDirection: 'row', justifyContent: 'space-around', paddingVertical: theme.space.sm },
   quickActionBtn: { alignItems: 'center', padding: 8 },
   quickActionIcon: { width: 50, height: 50, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
 });

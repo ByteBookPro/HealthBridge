@@ -369,16 +369,61 @@ def _trend(seed: int, base: float, span: float, n: int = 14) -> List[float]:
     return [round(base + random.uniform(-span, span), 1) for _ in range(n)]
 
 
+# Comprehensive health metrics organized by category
 DEFAULT_METRICS_TEMPLATE = [
-    {"metric": "steps", "label": "Steps", "unit": "steps", "current": 8420, "goal": 10000, "apple_value": 4720, "samsung_value": 3700, "delta_pct": 6.2},
-    {"metric": "heart_rate", "label": "Heart Rate", "unit": "bpm", "current": 72, "goal": 80, "apple_value": 71, "samsung_value": 73, "delta_pct": -1.4},
-    {"metric": "sleep", "label": "Sleep", "unit": "h", "current": 7.4, "goal": 8.0, "apple_value": 7.4, "samsung_value": 7.2, "delta_pct": 2.7},
-    {"metric": "workouts", "label": "Workouts", "unit": "min", "current": 42, "goal": 60, "apple_value": 28, "samsung_value": 14, "delta_pct": 12.0},
-    {"metric": "spo2", "label": "Blood Oxygen", "unit": "%", "current": 98, "goal": 100, "apple_value": 98, "samsung_value": 97, "delta_pct": 0.5},
-    {"metric": "ecg", "label": "ECG", "unit": "ms", "current": 412, "goal": 420, "apple_value": 412, "samsung_value": None, "delta_pct": 0.0},
-    {"metric": "calories", "label": "Calories", "unit": "kcal", "current": 1842, "goal": 2200, "apple_value": 980, "samsung_value": 862, "delta_pct": 4.1},
-    {"metric": "stand", "label": "Stand", "unit": "hr", "current": 9, "goal": 12, "apple_value": 9, "samsung_value": 8, "delta_pct": 3.0},
+    # ACTIVITY
+    {"metric": "steps", "label": "Steps", "unit": "steps", "current": 8420, "goal": 10000, "apple_value": 4720, "samsung_value": 3700, "delta_pct": 6.2, "category": "activity"},
+    {"metric": "distance", "label": "Distance", "unit": "km", "current": 6.3, "goal": 8.0, "apple_value": 3.5, "samsung_value": 2.8, "delta_pct": 4.5, "category": "activity"},
+    {"metric": "active_minutes", "label": "Active Minutes", "unit": "min", "current": 84, "goal": 60, "apple_value": 47, "samsung_value": 37, "delta_pct": 12.1, "category": "activity"},
+    {"metric": "floors", "label": "Floors Climbed", "unit": "floors", "current": 12, "goal": 10, "apple_value": 8, "samsung_value": 4, "delta_pct": 8.3, "category": "activity"},
+    {"metric": "calories", "label": "Calories Burned", "unit": "kcal", "current": 1842, "goal": 2200, "apple_value": 980, "samsung_value": 862, "delta_pct": 4.1, "category": "activity"},
+    {"metric": "stand", "label": "Stand Hours", "unit": "hr", "current": 9, "goal": 12, "apple_value": 9, "samsung_value": 8, "delta_pct": 3.0, "category": "activity"},
+    
+    # EXERCISE
+    {"metric": "workouts", "label": "Workout Time", "unit": "min", "current": 42, "goal": 60, "apple_value": 28, "samsung_value": 14, "delta_pct": 12.0, "category": "exercise"},
+    {"metric": "workout_count", "label": "Workouts Done", "unit": "sessions", "current": 5, "goal": 7, "apple_value": 3, "samsung_value": 2, "delta_pct": 25.0, "category": "exercise"},
+    {"metric": "vo2_max", "label": "VO2 Max", "unit": "mL/kg/min", "current": 42.5, "goal": 50, "apple_value": 42.5, "samsung_value": None, "delta_pct": 2.4, "category": "exercise"},
+    {"metric": "training_load", "label": "Training Load", "unit": "TRIMP", "current": 156, "goal": 200, "apple_value": 156, "samsung_value": None, "delta_pct": 8.2, "category": "exercise"},
+    {"metric": "recovery_time", "label": "Recovery Time", "unit": "hr", "current": 18, "goal": 24, "apple_value": 18, "samsung_value": None, "delta_pct": -5.3, "category": "exercise"},
+    
+    # NUTRITION
+    {"metric": "calorie_intake", "label": "Calorie Intake", "unit": "kcal", "current": 2150, "goal": 2000, "apple_value": None, "samsung_value": None, "delta_pct": 3.2, "category": "nutrition"},
+    {"metric": "protein", "label": "Protein", "unit": "g", "current": 95, "goal": 120, "apple_value": None, "samsung_value": None, "delta_pct": 5.6, "category": "nutrition"},
+    {"metric": "carbs", "label": "Carbohydrates", "unit": "g", "current": 245, "goal": 250, "apple_value": None, "samsung_value": None, "delta_pct": -2.1, "category": "nutrition"},
+    {"metric": "fat", "label": "Fat", "unit": "g", "current": 72, "goal": 65, "apple_value": None, "samsung_value": None, "delta_pct": 4.8, "category": "nutrition"},
+    {"metric": "water", "label": "Water Intake", "unit": "L", "current": 2.4, "goal": 3.0, "apple_value": None, "samsung_value": None, "delta_pct": 15.0, "category": "nutrition"},
+    {"metric": "fiber", "label": "Fiber", "unit": "g", "current": 28, "goal": 30, "apple_value": None, "samsung_value": None, "delta_pct": 7.7, "category": "nutrition"},
+    
+    # BODY
+    {"metric": "weight", "label": "Weight", "unit": "kg", "current": 72.4, "goal": 70, "apple_value": None, "samsung_value": 72.4, "delta_pct": -0.8, "category": "body"},
+    {"metric": "bmi", "label": "BMI", "unit": "kg/m²", "current": 23.8, "goal": 22.5, "apple_value": None, "samsung_value": 23.8, "delta_pct": -0.4, "category": "body"},
+    {"metric": "body_fat", "label": "Body Fat", "unit": "%", "current": 18.5, "goal": 15, "apple_value": None, "samsung_value": 18.5, "delta_pct": -1.2, "category": "body"},
+    {"metric": "muscle_mass", "label": "Muscle Mass", "unit": "kg", "current": 32.5, "goal": 35, "apple_value": None, "samsung_value": 32.5, "delta_pct": 0.9, "category": "body"},
+    {"metric": "sleep", "label": "Sleep Duration", "unit": "h", "current": 7.4, "goal": 8.0, "apple_value": 7.4, "samsung_value": 7.2, "delta_pct": 2.7, "category": "body"},
+    {"metric": "sleep_quality", "label": "Sleep Quality", "unit": "score", "current": 82, "goal": 90, "apple_value": 82, "samsung_value": 78, "delta_pct": 4.1, "category": "body"},
+    
+    # VITALS
+    {"metric": "heart_rate", "label": "Heart Rate", "unit": "bpm", "current": 72, "goal": 70, "apple_value": 71, "samsung_value": 73, "delta_pct": -1.4, "category": "vitals"},
+    {"metric": "resting_hr", "label": "Resting HR", "unit": "bpm", "current": 58, "goal": 55, "apple_value": 58, "samsung_value": 59, "delta_pct": -2.1, "category": "vitals"},
+    {"metric": "hrv", "label": "Heart Rate Variability", "unit": "ms", "current": 45, "goal": 50, "apple_value": 45, "samsung_value": None, "delta_pct": 3.5, "category": "vitals"},
+    {"metric": "blood_pressure_sys", "label": "Blood Pressure (Sys)", "unit": "mmHg", "current": 118, "goal": 120, "apple_value": None, "samsung_value": 118, "delta_pct": -1.7, "category": "vitals"},
+    {"metric": "blood_pressure_dia", "label": "Blood Pressure (Dia)", "unit": "mmHg", "current": 78, "goal": 80, "apple_value": None, "samsung_value": 78, "delta_pct": -0.5, "category": "vitals"},
+    {"metric": "spo2", "label": "Blood Oxygen", "unit": "%", "current": 98, "goal": 100, "apple_value": 98, "samsung_value": 97, "delta_pct": 0.5, "category": "vitals"},
+    {"metric": "respiratory_rate", "label": "Respiratory Rate", "unit": "br/min", "current": 14, "goal": 16, "apple_value": 14, "samsung_value": 15, "delta_pct": 2.1, "category": "vitals"},
+    {"metric": "body_temp", "label": "Body Temperature", "unit": "°C", "current": 36.6, "goal": 37, "apple_value": 36.6, "samsung_value": None, "delta_pct": 0.0, "category": "vitals"},
+    {"metric": "ecg", "label": "ECG Reading", "unit": "ms", "current": 412, "goal": 420, "apple_value": 412, "samsung_value": None, "delta_pct": 0.0, "category": "vitals"},
+    {"metric": "stress", "label": "Stress Level", "unit": "score", "current": 35, "goal": 30, "apple_value": None, "samsung_value": 35, "delta_pct": -8.2, "category": "vitals"},
 ]
+
+
+# Category metadata for UI
+METRIC_CATEGORIES = {
+    "activity": {"label": "Activity", "icon": "walk", "color": "#2DD4BF"},
+    "exercise": {"label": "Exercise", "icon": "barbell", "color": "#F59E0B"},
+    "nutrition": {"label": "Nutrition", "icon": "nutrition", "color": "#10B981"},
+    "body": {"label": "Body", "icon": "body", "color": "#8B5CF6"},
+    "vitals": {"label": "Vitals", "icon": "heart", "color": "#EF4444"},
+}
 
 
 async def seed_user_data(user_id: str) -> None:
@@ -450,6 +495,33 @@ async def seed_demo_user() -> None:
     })
     await seed_user_data(user_id)
     log.info(f"Demo user seeded: {demo_email}")
+
+
+async def upgrade_user_metrics(user_id: str) -> int:
+    """Upgrade existing user to have comprehensive metrics if they don't exist."""
+    existing = await db.metric_summaries.find({"user_id": user_id}, {"metric": 1}).to_list(100)
+    existing_metrics = {m["metric"] for m in existing}
+    
+    new_metrics_added = 0
+    now = datetime.now(timezone.utc)
+    
+    for idx, m in enumerate(DEFAULT_METRICS_TEMPLATE):
+        if m["metric"] not in existing_metrics:
+            await db.metric_summaries.insert_one({
+                **m,
+                "user_id": user_id,
+                "trend": _trend(idx + 100, m["current"], max(m["current"] * 0.08, 1.0)),
+                "updated_at": now,
+            })
+            new_metrics_added += 1
+        else:
+            # Update existing metric to include category
+            await db.metric_summaries.update_one(
+                {"user_id": user_id, "metric": m["metric"]},
+                {"$set": {"category": m.get("category", "activity"), "label": m["label"]}}
+            )
+    
+    return new_metrics_added
 
 
 # ---------- Push helper ----------
@@ -659,6 +731,8 @@ async def metric_detail(metric: str, time_range: str = "week", user=Depends(curr
         "current": summary["current"],
         "goal": summary["goal"],
         "unit": summary["unit"],
+        "label": summary.get("label", metric.replace("_", " ").title()),
+        "category": summary.get("category", "activity"),
         "trend": summary.get("trend", []),
         "apple_value": summary.get("apple_value"),
         "samsung_value": summary.get("samsung_value"),
@@ -668,6 +742,59 @@ async def metric_detail(metric: str, time_range: str = "week", user=Depends(curr
         "hourly": hourly,
         "scientific": scientific,
     }
+
+
+@api.get("/metrics/categories")
+async def get_metric_categories(user=Depends(current_user)):
+    """Get all metrics organized by category for the comprehensive health dashboard."""
+    docs = await db.metric_summaries.find(
+        {"user_id": user["id"]}, {"_id": 0, "user_id": 0, "updated_at": 0}
+    ).to_list(100)
+    
+    # Organize metrics by category
+    categories = {}
+    for cat_id, cat_info in METRIC_CATEGORIES.items():
+        categories[cat_id] = {
+            "id": cat_id,
+            "label": cat_info["label"],
+            "icon": cat_info["icon"],
+            "color": cat_info["color"],
+            "metrics": []
+        }
+    
+    # Add metrics to their categories
+    for doc in docs:
+        cat = doc.get("category", "activity")
+        if cat in categories:
+            categories[cat]["metrics"].append(doc)
+    
+    return {
+        "categories": list(categories.values()),
+        "total_metrics": len(docs),
+        "category_metadata": METRIC_CATEGORIES,
+    }
+
+
+@api.get("/metrics/summary/all")
+async def metrics_summary_all(user=Depends(current_user)):
+    """Get all metrics including new comprehensive ones with category info."""
+    # First, ensure user has all comprehensive metrics
+    added = await upgrade_user_metrics(user["id"])
+    if added > 0:
+        log.info(f"Upgraded user {user['id']} with {added} new metrics")
+    
+    docs = await db.metric_summaries.find(
+        {"user_id": user["id"]}, {"_id": 0, "user_id": 0, "updated_at": 0}
+    ).to_list(100)
+    
+    # Sort by category order
+    category_order = ["activity", "exercise", "nutrition", "body", "vitals"]
+    docs.sort(key=lambda d: (
+        category_order.index(d.get("category", "activity")) if d.get("category") in category_order else 99,
+        d.get("metric", "")
+    ))
+    
+    return docs
 
 
 def calculate_scientific_metrics(metric: str, summary: dict, user: dict) -> dict:

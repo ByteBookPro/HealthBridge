@@ -112,7 +112,15 @@ export type Watch = {
 
 export type MetricKey =
   | 'steps' | 'heart_rate' | 'sleep' | 'workouts'
-  | 'spo2' | 'ecg' | 'calories' | 'stand';
+  | 'spo2' | 'ecg' | 'calories' | 'stand'
+  | 'distance' | 'active_minutes' | 'floors' | 'workout_count'
+  | 'vo2_max' | 'training_load' | 'recovery_time'
+  | 'calorie_intake' | 'protein' | 'carbs' | 'fat' | 'water' | 'fiber'
+  | 'weight' | 'bmi' | 'body_fat' | 'muscle_mass' | 'sleep_quality'
+  | 'resting_hr' | 'hrv' | 'blood_pressure_sys' | 'blood_pressure_dia'
+  | 'respiratory_rate' | 'body_temp' | 'stress';
+
+export type MetricCategory = 'activity' | 'exercise' | 'nutrition' | 'body' | 'vitals';
 
 export type MetricSummary = {
   metric: MetricKey;
@@ -124,6 +132,21 @@ export type MetricSummary = {
   apple_value: number | null;
   samsung_value: number | null;
   delta_pct: number;
+  category?: MetricCategory;
+};
+
+export type CategoryInfo = {
+  id: MetricCategory;
+  label: string;
+  icon: string;
+  color: string;
+  metrics: MetricSummary[];
+};
+
+export type CategoriesResponse = {
+  categories: CategoryInfo[];
+  total_metrics: number;
+  category_metadata: Record<MetricCategory, { label: string; icon: string; color: string }>;
 };
 
 export type SyncPref = {
@@ -158,6 +181,8 @@ export const api = {
   watches: () => request<Watch[]>('/watches'),
   toggleWatch: (id: string) => request<Watch>(`/watches/${id}/toggle`, { method: 'POST' }),
   metrics: () => request<MetricSummary[]>('/metrics/summary'),
+  metricsAll: () => request<MetricSummary[]>('/metrics/summary/all'),
+  metricsCategories: () => request<CategoriesResponse>('/metrics/categories'),
   syncNow: () => request<{ synced: number; timestamp: string }>('/metrics/sync-now', { method: 'POST' }),
   prefs: () => request<SyncPref[]>('/sync/preferences'),
   updatePref: (metric: string, pref: SyncPref) =>
