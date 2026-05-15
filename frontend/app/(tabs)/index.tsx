@@ -130,6 +130,34 @@ export default function Dashboard() {
             </GlassCard>
           </Pressable>
 
+          {/* Quick Actions */}
+          <View style={styles.quickActionsRow}>
+            <Pressable onPress={() => router.push('/water-tracking')} style={styles.quickActionBtn}>
+              <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(59,130,246,0.15)' }]}>
+                <Ionicons name="water" size={22} color="#3B82F6" />
+              </View>
+              <AppText size={10} color={theme.colors.textDim} style={{ marginTop: 6 }}>Water</AppText>
+            </Pressable>
+            <Pressable onPress={() => router.push('/achievements')} style={styles.quickActionBtn}>
+              <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(245,158,11,0.15)' }]}>
+                <Ionicons name="trophy" size={22} color="#F59E0B" />
+              </View>
+              <AppText size={10} color={theme.colors.textDim} style={{ marginTop: 6 }}>Badges</AppText>
+            </Pressable>
+            <Pressable onPress={() => router.push('/emergency')} style={styles.quickActionBtn}>
+              <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(239,68,68,0.15)' }]}>
+                <Ionicons name="warning" size={22} color="#EF4444" />
+              </View>
+              <AppText size={10} color={theme.colors.textDim} style={{ marginTop: 6 }}>SOS</AppText>
+            </Pressable>
+            <Pressable onPress={() => router.push('/appearance')} style={styles.quickActionBtn}>
+              <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(139,92,246,0.15)' }]}>
+                <Ionicons name="color-palette" size={22} color="#8B5CF6" />
+              </View>
+              <AppText size={10} color={theme.colors.textDim} style={{ marginTop: 6 }}>Themes</AppText>
+            </Pressable>
+          </View>
+
           {/* Bridge status */}
           <Animated.View entering={FadeInDown.duration(400)}>
             <GlassCard style={{ marginTop: theme.space.md }} glow testID="bridge-status-card">
@@ -284,4 +312,7 @@ const styles = StyleSheet.create({
   sectionLabel: { marginTop: theme.space.lg, marginBottom: theme.space.sm, letterSpacing: 1.5, textTransform: 'uppercase' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.sm },
   cell: { width: '48.5%' },
+  quickActionsRow: { flexDirection: 'row', justifyContent: 'space-around', marginTop: theme.space.md, paddingVertical: theme.space.sm },
+  quickActionBtn: { alignItems: 'center', padding: 8 },
+  quickActionIcon: { width: 50, height: 50, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
 });
