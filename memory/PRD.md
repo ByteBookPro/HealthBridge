@@ -1,6 +1,6 @@
 # HealthBridge Vault - Product Requirements Document (PRD)
 
-## Version 4.2 | Last Updated: May 2026
+## Version 5.0 | Last Updated: May 2026
 
 ---
 
@@ -12,8 +12,9 @@
 - **Cross-Ecosystem Sync**: Apple Health ↔ Health Connect (Android) bidirectional sync
 - **Universal Watch Support**: Connect any smartwatch regardless of phone platform
 - **AI-Powered Insights**: GPT-powered weekly health reports and recommendations
-- **Privacy-First**: End-to-end encrypted health data vault
+- **Privacy-First**: End-to-end encrypted health data vault with biometric authentication
 - **Scientific Metrics**: Hospital-grade health calculations and analysis
+- **One Dashboard**: 33+ metrics across 5 categories in one unified view
 
 ---
 
@@ -37,20 +38,29 @@
 | Token Refresh | ✅ Done | Auto-refresh before expiry |
 | Role-Based Access | ✅ Done | FREE, PRO, ADMIN roles |
 | 30-Day PRO Trial | ✅ Done | New users get PRO features free |
+| Biometric Lock | ✅ Done | Face ID / Touch ID / Fingerprint support |
 
-### 3.2 Health Metrics Dashboard
-| Metric | Scientific Calculations | Status |
-|--------|------------------------|--------|
-| Steps | Distance, Calories, Active Minutes, Cadence, Step Asymmetry | ✅ Done |
-| Heart Rate | Resting HR, Max HR, HRV (RMSSD), Recovery Rate, HR Zones | ✅ Done |
-| Sleep | Deep/Light/REM stages, Sleep Score, Efficiency, Sleep Debt | ✅ Done |
-| Workouts | VO2 Max, Training Load (TRIMP), Recovery Time | ✅ Done |
-| SpO2 | Avg/Min, Night Average, Low O2 Events, Respiratory Rate | ✅ Done |
-| ECG | PR/QRS/QT Intervals, QTc, Rhythm Classification | ✅ Done |
-| Calories | BMR, TDEE, Active/Resting split, Net Calories | ✅ Done |
-| Stand | Stand Hours, Sedentary Time, Movement Breaks | ✅ Done |
+### 3.2 Health Metrics Dashboard (33 Metrics)
+| Category | Metrics | Status |
+|----------|---------|--------|
+| **Activity** (6) | Steps, Distance, Active Minutes, Floors Climbed, Calories Burned, Stand Hours | ✅ Done |
+| **Exercise** (5) | Workout Time, Workout Count, VO2 Max, Training Load, Recovery Time | ✅ Done |
+| **Nutrition** (6) | Calorie Intake, Protein, Carbs, Fat, Water Intake, Fiber | ✅ Done |
+| **Body** (6) | Weight, BMI, Body Fat, Muscle Mass, Sleep Duration, Sleep Quality | ✅ Done |
+| **Vitals** (10) | Heart Rate, Resting HR, HRV, Blood Pressure (Sys/Dia), SpO2, Respiratory Rate, Body Temp, ECG, Stress Level | ✅ Done |
 
-### 3.3 Metric Detail Screens
+### 3.3 Dashboard Features
+| Feature | Status | Description |
+|---------|--------|-------------|
+| Activity Rings | ✅ Done | Calories, Exercise, Steps progress rings |
+| Collapsible Categories | ✅ Done | Organize 33 metrics into 5 expandable categories |
+| Sparkline Trends | ✅ Done | Mini charts on each metric card |
+| Source Badges | ✅ Done | Shows Apple/Samsung data origins on each metric |
+| Delta Indicators | ✅ Done | +/-% change from previous period |
+| Metric Customization | ✅ Done | Toggle individual metrics on/off |
+| Quick Actions | ✅ Done | Water tracking, Badges, SOS, Settings |
+
+### 3.4 Metric Detail Screens
 | Feature | Status | Description |
 |---------|--------|-------------|
 | Historical Charts | ✅ Done | Day/Week/Month/Year views with SVG charts |
@@ -61,7 +71,20 @@
 | Heart Rate Zones | ✅ Done | Fat Burn/Cardio/Peak zone breakdown |
 | Sleep Stages | ✅ Done | Visual sleep stage composition |
 
-### 3.4 Universal Watch Connectivity
+### 3.5 App Connectors (NEW)
+| App | Platform | Metrics Enabled | Status |
+|-----|----------|-----------------|--------|
+| Apple Health | iOS | steps, heart_rate, sleep, calories, workouts, vo2_max, hrv, spo2, ecg | ✅ Done |
+| Google Fit | Android | steps, heart_rate, sleep, calories, distance, active_minutes | ✅ Done |
+| Samsung Health | Android | steps, heart_rate, sleep, calories, stress, blood_pressure, spo2 | ✅ Done |
+| Fitbit | iOS/Android | steps, heart_rate, sleep, calories, active_minutes, floors, distance | ✅ Done |
+| Garmin Connect | iOS/Android | steps, heart_rate, sleep, calories, vo2_max, training_load, recovery_time, stress | ✅ Done |
+| MyFitnessPal | iOS/Android | calorie_intake, protein, carbs, fat, fiber, water | ✅ Done |
+| Strava | iOS/Android | workouts, distance, calories, heart_rate, vo2_max | ✅ Done |
+| Oura Ring | iOS/Android | sleep, sleep_quality, hrv, resting_hr, body_temp, respiratory_rate | ✅ Done |
+| Withings | iOS/Android | weight, bmi, body_fat, muscle_mass, blood_pressure | ✅ Done |
+
+### 3.6 Universal Watch Connectivity
 | Feature | Status | Description |
 |---------|--------|-------------|
 | Platform Detection | ✅ Done | Auto-detect iOS/Android/Web |
@@ -70,8 +93,9 @@
 | Health Connect | ✅ Done | Android unified health API |
 | Permission Flow | ✅ Done | Step-by-step permission requests |
 | Setup Wizard | ✅ Done | Guided setup experience |
+| Connected Devices Card | ✅ Done | Shows connected watches with battery % |
 
-### 3.5 PRO Features (Subscription)
+### 3.7 PRO Features (Subscription)
 | Feature | Status | Description |
 |---------|--------|-------------|
 | AI Weekly Insights | ✅ Done | GPT-powered health analysis |
@@ -80,7 +104,14 @@
 | Stripe Billing | ✅ Done | $4.99/month subscription |
 | Vault Export | ✅ Done | JSON/CSV/GPX export options |
 
-### 3.6 Admin Features
+### 3.8 Security Features (NEW)
+| Feature | Status | Description |
+|---------|--------|-------------|
+| Biometric Lock | ✅ Done | Face ID / Touch ID / Fingerprint |
+| App Lock Settings | ⏳ Planned | Configure timeout and sensitive actions |
+| End-to-End Encryption | ✅ Done | All health data encrypted |
+
+### 3.9 Admin Features
 | Feature | Status | Description |
 |---------|--------|-------------|
 | User Management | ✅ Done | View/manage all users |
@@ -99,88 +130,107 @@
 - **AI**: Emergent LLM Integration (OpenAI-compatible)
 - **Payments**: Stripe (test mode configured)
 
-### 4.2 API Endpoints Summary
-See `/app/docs/API.md` for complete documentation.
-
-### 4.3 Environment Variables
+### 4.2 Key Dependencies (Frontend)
+```json
+{
+  "expo": "~53.0.0",
+  "expo-router": "~5.0.0",
+  "expo-local-authentication": "~17.0.8",
+  "react-native-reanimated": "~3.17.0",
+  "react-native-svg": "15.11.2",
+  "victory-native": "^41.20.3"
+}
 ```
-# Backend (.env)
-MONGO_URL=mongodb://localhost:27017/healthbridge
-JWT_SECRET=<random-secret>
-STRIPE_SECRET_KEY=sk_test_...
-EMERGENT_LLM_KEY=sk-emergent-...
 
-# Frontend (.env)
-EXPO_PUBLIC_BACKEND_URL=http://localhost:8001
-EXPO_PACKAGER_PROXY_URL=<tunnel-url>
+### 4.3 API Endpoints
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/auth/login` | POST | User login |
+| `/api/auth/register` | POST | User registration |
+| `/api/metrics/summary` | GET | Get 8 basic metrics |
+| `/api/metrics/summary/all` | GET | Get all 33 metrics |
+| `/api/metrics/categories` | GET | Get metrics organized by category |
+| `/api/metrics/{metric}/detail` | GET | Get detailed metric data |
+| `/api/insights` | GET | AI health insights (PRO) |
+| `/api/goals` | GET/POST | User health goals (PRO) |
+| `/api/watches` | GET | Get connected watches |
+| `/api/admin/stats` | GET | Admin KPI dashboard |
+
+---
+
+## 5. File Structure
+
+```
+/app
+├── backend/
+│   ├── server.py           # FastAPI application (1600+ lines)
+│   ├── requirements.txt    # Python dependencies
+│   └── .env               # Backend environment variables
+├── frontend/
+│   ├── app/
+│   │   ├── (tabs)/        # Tab screens (index, watches, sync, vault, settings)
+│   │   ├── (auth)/        # Auth screens (login, register)
+│   │   ├── metric/[id].tsx # Metric detail screen
+│   │   ├── onboarding.tsx  # Landing page (redesigned)
+│   │   ├── setup.tsx       # Watch setup wizard
+│   │   ├── app-connectors.tsx # App connectors screen (NEW)
+│   │   ├── customize-metrics.tsx # Metric toggle screen (NEW)
+│   │   └── ...
+│   ├── src/
+│   │   ├── components/    # Reusable components
+│   │   ├── api/client.ts  # API client
+│   │   ├── context/       # Auth context
+│   │   ├── services/      # BiometricAuth, HealthBridge
+│   │   └── theme/         # Theme configuration
+│   └── .env              # Frontend environment variables
+└── memory/
+    ├── PRD.md            # This file
+    └── test_credentials.md # Test accounts
 ```
 
 ---
 
-## 5. Test Credentials
+## 6. Pending/Future Work
 
-| Role | Email | Password |
-|------|-------|----------|
+### Phase C: Watch Proximity & Syncing Animation (NEXT)
+| Feature | Status | Description |
+|---------|--------|-------------|
+| Watch Proximity Detection | ⏳ Planned | Only enable new watch connection when in proximity |
+| Primary Data Source Selection | ⏳ Planned | Select which watch to fetch data from |
+| Syncing Animation | ⏳ Planned | Show animation during data sync |
+
+### Future Enhancements
+- Push notifications for health alerts
+- Widgets for iOS/Android home screens
+- Apple Watch companion app
+- Health data sharing with doctors
+- Integration with more fitness apps
+
+---
+
+## 7. Test Credentials
+
+| Account Type | Email | Password |
+|--------------|-------|----------|
+| Demo (PRO Trial) | demo@healthbridge.app | Demo1234! |
 | Admin + PRO | admin@healthbridge.app | ySk4rWp4nSn5KsB8WvI4iF |
-| Free User | demo@healthbridge.app | Demo1234! |
 
 ---
 
-## 6. Screens & Navigation
+## 8. Changelog
 
-### Tab Navigation
-1. **Dashboard** (`/(tabs)/index.tsx`) - Activity rings, metric grid
-2. **Watches** (`/(tabs)/watches.tsx`) - Connected devices
-3. **Sync** (`/(tabs)/sync.tsx`) - Sync history and settings
-4. **Insights** (`/(tabs)/insights.tsx`) - AI-powered analysis (PRO)
-5. **Profile** (`/(tabs)/profile.tsx`) - Settings, subscription
+### v5.0 (Current - May 2026)
+- ✅ Redesigned onboarding page with animations
+- ✅ 33 comprehensive health metrics (was 8)
+- ✅ 5 metric categories (Activity, Exercise, Nutrition, Body, Vitals)
+- ✅ App Connectors screen with 9 health apps
+- ✅ Metric customization (show/hide metrics)
+- ✅ Biometric authentication support
+- ✅ Connected Devices card on dashboard
+- ✅ New Settings sections (App Connections, Security)
 
-### Stack Screens
-- `/login` - Authentication
-- `/register` - New account
-- `/onboarding` - First-time setup
-- `/setup` - Universal watch connectivity wizard
-- `/metric/[type]` - Detailed metric view
-- `/connect` - Bridge setup guide
-- `/notifications` - Notification preferences
-- `/admin` - Admin dashboard (ADMIN only)
-
----
-
-## 7. Pending/Future Features
-
-### High Priority
-- [ ] Real HealthKit/Health Connect native module integration (requires EAS build)
-- [ ] Fitbit OAuth integration
-- [ ] Garmin Connect API integration
-- [ ] Push notifications for goal completion
-
-### Medium Priority
-- [ ] Social features (share achievements)
-- [ ] Apple Watch companion app
-- [ ] Widget for iOS/Android home screen
-- [ ] Dark/Light theme toggle
-
-### Low Priority
-- [ ] Wear OS companion app
-- [ ] Web dashboard
-- [ ] Family sharing plan
-- [ ] Integration with Apple Fitness+
-
----
-
-## 8. Known Limitations
-
-1. **Apple Watch on Android**: Not possible due to Apple's Activation Lock. App can only bridge historical data via Migration Wizard.
-2. **ECG Write**: Cannot write ECG data to Health Connect (read-only by Google's policy)
-3. **Real-time Sync**: Requires EAS dev build for native modules; Expo Go uses simulated data
-4. **Stripe Payments**: Currently in test mode; production keys needed for App Store
-
----
-
-## 9. Success Metrics
-
-- **User Activation**: 70% of users complete setup wizard
-- **Retention**: 40% DAU/MAU ratio
-- **Conversion**: 15% free-to-PRO conversion after trial
-- **NPS**: Target 50+ Net Promoter Score
+### v4.0 (Previous)
+- Initial PRO features (AI Insights, Goals, Reports)
+- Stripe subscription integration
+- Admin dashboard
+- 8 basic health metrics
