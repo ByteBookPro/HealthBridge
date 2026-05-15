@@ -1,54 +1,75 @@
-# HealthBridge Vault — PRD (v2)
+# HealthBridge Vault — PRD (v4)
 
 ## Vision
-Cross-ecosystem health-data bridge with full-stack mobile app, premium UI, **paid subscription tier**, and a **web admin portal** for CRM, subscriptions, broadcasts and audit.
+Premium cross-ecosystem health-data bridge with **subscription-worthy** PRO features:
+AI-powered weekly insights, goals, weekly reports, multi-watch bridging, notification mirror, history migration wizard, full publishing kit, and a web admin portal.
 
 ## Stack
-- **Frontend**: Expo SDK 54 (React Native + expo-router), expo-blur, expo-linear-gradient, react-native-reanimated, react-native-svg, expo-secure-store, expo-local-authentication, expo-notifications, expo-web-browser, @expo-google-fonts/{outfit,manrope}.
-- **Backend**: FastAPI + Motor (MongoDB) + bcrypt + PyJWT + Stripe + httpx.
-- **Native bridge** (drop-in via EAS dev build): react-native-health (iOS HealthKit) and react-native-health-connect (Android).
+- **Frontend**: Expo SDK 54 + expo-router + reanimated + svg + glassmorphism design system + 18 routes.
+- **Backend**: FastAPI + Motor (MongoDB), bcrypt + JWT, Stripe (dev-mode fallback), Expo Push, **emergentintegrations LlmChat (openai/gpt-4o-mini)** for AI insights.
 
 ## Implemented features
 
-### User app (`/(tabs)/*` and `/(auth)/*`)
-1. Onboarding · Login · Register · **Forgot password (token-based)** · Auto-login
-2. Dashboard — bridge status card, animated Activity Rings, metric cards, sync-now
-3. Watches — Apple Watch + Galaxy Watch with connect/disconnect toggle
-4. Sync — per-metric bidirectional switches, conflict policy, live audit log
-5. Vault — biometric gate (FaceID/Touch/passcode) + JSON/CSV/GPX export
-6. Settings — profile, **PRO upgrade card with Stripe checkout**, **Manage subscription via Stripe portal**, **Admin Portal link for admins**, background-sync, notifications, audit, sign-out
+### Public / Free
+- Onboarding (honest copy: health bridge + iPhone notifs → Galaxy Watch)
+- Email/password register + login + forgot-password
+- Dashboard with bridge status, Activity Rings, metric cards, sync-now
+- Watches tab (connect/disconnect, Connect Wizard, Notification Bridge entry)
+- Sync tab (per-metric toggles, conflict policy, audit log)
+- Vault (biometric gate, JSON/CSV/GPX export)
+- Settings (profile, sign-out, notifications, audit shortcuts)
+- Connect Wizard (`/connect`) — honest path selection
+- Notification Bridge (`/notifications`) — apps allow-list, live log
+- Migration Wizard (`/migrate`) — 90-day history with progress bar
 
-### Admin web (`/admin`)
-1. Overview — total users / PRO / MRR / syncs 24h / active subs / pushes
-2. Users — search, grant PRO, cancel subscription, ADMIN/PRO tags
-3. Broadcast — push to all registered devices
-4. Audit — last 100 sync events + last 100 notifications globally
+### PRO ($4.99/mo)
+- **AI Health Insights** (`/insights`) — uses Emergent LLM (gpt-4o-mini) to generate 4 personalized findings from the user's last 14 days of bridged metrics, with severity + action
+- **Weekly Report** — 7-day stats per metric (avg/min/max/change-pct)
+- **Goals** — per-metric daily/weekly targets with progress + streak
+- **Multi-watch bridge** (Apple + Galaxy in parallel)
+- **Unlimited export**
+- **Priority Stripe Customer Portal** for self-service
 
-### Backend (`/api/*`)
-- Auth: register / login / refresh / me / **profile update** / **change password** / **forgot+reset password**
-- Watches: list, toggle
-- Metrics: summary, sync-now, **ingest** (native bridge → cloud)
-- Sync: prefs, policy, events
-- Vault: export
-- **Push**: register token, test send, broadcast
-- **Billing**: checkout (Stripe), customer portal, webhook (idempotent), DB persistence of plan/period/cancel-at-end
-- **Admin**: stats, users (search), set plan, cancel sub, broadcast, global audit
+### Admin (`/admin`)
+- 6-tile KPI overview (Total users, PRO, MRR, Syncs 24h, Active subs, Pushes)
+- Users CRM (search, grant PRO, cancel sub)
+- Broadcast push
+- Global audit log
 
-## Mocked vs real
-- ✅ Real: JWT auth, MongoDB persistence, all CRUD, audit log, sync-now jitter, **Stripe Checkout against test key**, **Expo Push** (works as soon as a real push token registers), **idempotent webhook**, admin RBAC.
-- 🧪 Real **but** Expo Go preview can't load the native modules: HealthKit / Health Connect / Samsung Health bridge code (`/app/frontend/src/services/healthBridge.ts`) — verified, configured, and ready for `eas build --profile development`.
+### Backend `/api`
+- `/auth/*` (register, login, refresh, me, PATCH, change-password, forgot, reset)
+- `/watches`, `/watches/{id}/toggle`
+- `/metrics/summary`, `/metrics/sync-now`, `/metrics/ingest` (native bridge)
+- `/sync/preferences`, `/sync/policy`, `/sync/events`
+- `/vault/export`
+- `/billing/checkout`, `/billing/portal`, `/billing/webhook`
+- `/push/register`, `/push/test`
+- `/admin/stats`, `/admin/users`, set plan, cancel sub, broadcast, audit
+- `/migrate/start`, `/migrate/jobs/{id}`, `/migrate/jobs`
+- `/bridge/notifications/{settings,event,log}`
+- **PRO**: `/goals` CRUD, `/reports/weekly`, `/insights/generate`, `/insights`
 
-## Subscription economics
-- HealthBridge PRO: $4.99 / mo (Stripe price_data, USD).
-- MRR formula in admin: `active_subscriptions × 4.99`.
-- Free tier permanent: dashboard + last-30-days export.
+## PRO gating
+- `pro_only()` helper guards `/goals POST`, `/reports/weekly`, `/insights/generate` → HTTP 402 for FREE users.
+- Frontend `/insights` route shows a paywall card with "Upgrade to PRO" CTA when `user.subscription.plan !== 'pro'`.
 
-## Files added in v2
-- `/app/frontend/app/admin/_layout.tsx`, `/app/frontend/app/admin/index.tsx` (web admin portal)
-- `/app/frontend/app/(auth)/forgot.tsx`
-- `/app/frontend/src/services/healthBridge.ts`, `pushNotifications.ts`
-- `/app/frontend/eas.json`
-- `/app/docs/ARCHITECTURE.md`, `NATIVE_BRIDGE.md`, `EAS_BUILD.md`, `PUBLISHING_KIT.md`, `DATA_SAFETY.md`, `PRIVACY_POLICY.md`, `TERMS.md`, `ADMIN_PORTAL.md`
+## Native bridge code (drop-in for EAS dev build)
+- `/app/frontend/src/services/healthBridge.ts` (HealthKit + Health Connect)
+- `/app/frontend/src/services/notificationBridge.ts` (BLE ANS + Android Notif Listener)
+- Both use `require()` inside try/catch — Expo Go preview falls back to demo, EAS dev build activates real native APIs.
 
-## Test credentials
-See `/app/memory/test_credentials.md`. Demo `demo@healthbridge.app / Demo1234!` (FREE) and admin `admin@healthbridge.app / Admin1234!` (PRO + admin).
+## Documentation
+- `/app/docs/ARCHITECTURE.md`
+- `/app/docs/NATIVE_BRIDGE.md`
+- `/app/docs/NOTIFICATION_BRIDGE.md`
+- `/app/docs/EAS_BUILD.md`
+- `/app/docs/PUBLISHING_KIT.md`
+- `/app/docs/DATA_SAFETY.md`
+- `/app/docs/PRIVACY_POLICY.md`
+- `/app/docs/TERMS.md`
+- `/app/docs/ADMIN_PORTAL.md`
+- `/app/docs/DEPLOYMENT_CHECKLIST.md`
+
+## Test credentials (`/app/memory/test_credentials.md`)
+- FREE: `demo@healthbridge.app` / `Demo1234!`
+- Admin + PRO (auto-seeded): `admin@healthbridge.app` / `ySk4rWp4nSn5KsB8WvI4iF`

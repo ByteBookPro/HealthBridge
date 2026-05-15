@@ -46,6 +46,7 @@ ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "Admin1234!")
 ADMIN_NAME = os.environ.get("ADMIN_NAME", "HBV Admin")
 
 EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
+EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
 
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
@@ -231,6 +232,39 @@ class NotificationBridgeSettings(BaseModel):
     quiet_hours_start: Optional[str] = None
     quiet_hours_end: Optional[str] = None
     silent_mode: bool = False
+
+
+class GoalIn(BaseModel):
+    metric: MetricLiteral
+    target: float
+    period: Literal["daily", "weekly"] = "daily"
+
+
+class GoalOut(BaseModel):
+    id: str
+    metric: MetricLiteral
+    target: float
+    period: str
+    current: float = 0
+    progress_pct: float = 0
+    streak_days: int = 0
+    created_at: datetime
+
+
+class InsightOut(BaseModel):
+    id: str
+    title: str
+    summary: str
+    metric: Optional[MetricLiteral] = None
+    severity: Literal["info", "good", "warning", "critical"] = "info"
+    action: Optional[str] = None
+    created_at: datetime
+
+
+def pro_only(user: dict) -> None:
+    sub = user.get("subscription") or {}
+    if sub.get("plan") != "pro":
+        raise HTTPException(402, "HealthBridge PRO required")
 
 
 
@@ -594,11 +628,12 @@ async def migrate_get(job_id: str, user=Depends(current_user)):
     job = await db.migration_jobs.find_one({"id": job_id, "user_id": user["id"]}, {"_id": 0})
     if not job:
         raise HTTPException(404, "Migration job not found")
+    started = job["started_at"]
+    if isinstance(started, datetime) and started.tzinfo is None:
+        started = started.replace(tzinfo=timezone.utc)
+        job["started_at"] = started
     # Progress simulated by elapsed time — converges to 100% over ~12s
     if job["status"] == "running":
-        started = job["started_at"]
-        if started.tzinfo is None:
-            started = started.replace(tzinfo=timezone.utc)
         elapsed = (datetime.now(timezone.utc) - started).total_seconds()
         pct = min(100, int(elapsed / 12 * 100))
         migrated = int(pct * job["total"] / 100)
@@ -654,6 +689,140 @@ async def log_notif_event(n: NotificationBridgeIn, user=Depends(current_user)):
 async def list_notif_log(user=Depends(current_user), limit: int = 50):
     docs = await db.notif_bridge_log.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(limit)
     return docs
+
+
+# ---------- Goals (PRO) ----------
+@api.get("/goals", response_model=List[GoalOut])
+async def list_goals(user=Depends(current_user)):
+    docs = await db.goals.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    summary = await db.metric_summaries.find({"user_id": user["id"]}, {"_id": 0}).to_list(50)
+    by_metric = {s["metric"]: s for s in summary}
+    out: List[GoalOut] = []
+    for g in docs:
+        m = by_metric.get(g["metric"])
+        current = float(m["current"]) if m else 0.0
+        pct = min(100.0, (current / g["target"]) * 100) if g["target"] else 0.0
+        out.append(GoalOut(id=g["id"], metric=g["metric"], target=g["target"], period=g["period"],
+                           current=current, progress_pct=round(pct, 1),
+                           streak_days=g.get("streak_days", 0), created_at=g["created_at"]))
+    return out
+
+
+@api.post("/goals", response_model=GoalOut, status_code=201)
+async def create_goal(g: GoalIn, user=Depends(current_user)):
+    pro_only(user)
+    gid = str(uuid.uuid4())
+    doc = {"id": gid, "user_id": user["id"], "metric": g.metric, "target": g.target,
+           "period": g.period, "streak_days": 0, "created_at": datetime.now(timezone.utc)}
+    await db.goals.update_one({"user_id": user["id"], "metric": g.metric},
+                                {"$set": {**doc}}, upsert=True)
+    saved = await db.goals.find_one({"user_id": user["id"], "metric": g.metric}, {"_id": 0})
+    return GoalOut(id=saved["id"], metric=saved["metric"], target=saved["target"],
+                   period=saved["period"], current=0, progress_pct=0,
+                   streak_days=saved.get("streak_days", 0), created_at=saved["created_at"])
+
+
+@api.delete("/goals/{goal_id}")
+async def delete_goal(goal_id: str, user=Depends(current_user)):
+    res = await db.goals.delete_one({"id": goal_id, "user_id": user["id"]})
+    if not res.deleted_count:
+        raise HTTPException(404, "Goal not found")
+    return {"ok": True}
+
+
+# ---------- Weekly report (PRO) ----------
+@api.get("/reports/weekly")
+async def weekly_report(user=Depends(current_user)):
+    pro_only(user)
+    week_ago = datetime.now(timezone.utc) - timedelta(days=7)
+    summaries = await db.metric_summaries.find({"user_id": user["id"]}, {"_id": 0, "user_id": 0}).to_list(50)
+    events = await db.sync_events.count_documents({"user_id": user["id"], "created_at": {"$gte": week_ago}})
+    breakdown = []
+    for s in summaries:
+        trend = s.get("trend", [])
+        if len(trend) >= 2:
+            change = ((trend[-1] - trend[0]) / max(trend[0], 1)) * 100
+        else:
+            change = 0
+        breakdown.append({
+            "metric": s["metric"], "label": s["label"], "unit": s["unit"],
+            "current": s["current"], "avg": round(sum(trend) / max(len(trend), 1), 1) if trend else 0,
+            "min": min(trend) if trend else 0, "max": max(trend) if trend else 0,
+            "change_pct": round(change, 1),
+        })
+    return {
+        "period_start": week_ago.isoformat(),
+        "period_end": datetime.now(timezone.utc).isoformat(),
+        "syncs_total": events,
+        "breakdown": breakdown,
+    }
+
+
+# ---------- AI Health Insights (PRO) ----------
+@api.post("/insights/generate", response_model=List[InsightOut])
+async def generate_insights(user=Depends(current_user)):
+    pro_only(user)
+    if not EMERGENT_LLM_KEY:
+        raise HTTPException(503, "AI service not configured")
+    summaries = await db.metric_summaries.find({"user_id": user["id"]}, {"_id": 0, "user_id": 0}).to_list(50)
+    goals = await db.goals.find({"user_id": user["id"]}, {"_id": 0}).to_list(20)
+    payload_lines = [f"- {s['label']}: current={s['current']} {s['unit']}, "
+                     f"goal={s['goal']}, trend last 14 days={s['trend']}" for s in summaries]
+    goal_lines = [f"- {g['metric']} target {g['target']} {g['period']}" for g in goals] or ["(no goals set)"]
+    system = ("You are a board-certified preventive health coach. Generate 4 concise, "
+              "actionable insights for the user based on their health metrics. Each insight "
+              "must be a JSON object with keys: title (max 6 words), summary (1-2 sentences, "
+              "actionable, specific numbers from data), metric (one of steps, heart_rate, "
+              "sleep, workouts, spo2, ecg, calories, stand, or null), severity (info|good|"
+              "warning|critical), action (short call-to-action). Output ONLY a JSON array of "
+              "exactly 4 objects, no markdown.")
+    user_msg = "Metrics:\n" + "\n".join(payload_lines) + "\n\nGoals:\n" + "\n".join(goal_lines)
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage  # type: ignore
+        session_id = f"insights-{user['id']}-{int(datetime.now().timestamp())}"
+        chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=session_id, system_message=system) \
+            .with_model("openai", "gpt-4o-mini")
+        raw = await chat.send_message(UserMessage(text=user_msg))
+    except Exception as e:
+        log.warning(f"LLM failed: {e}")
+        raise HTTPException(502, f"AI service error: {e}")
+    # Parse JSON array
+    import json as _json, re as _re
+    text = (raw or "").strip()
+    m = _re.search(r"\[[\s\S]*\]", text)
+    if m:
+        text = m.group(0)
+    try:
+        data = _json.loads(text)
+    except Exception:
+        log.warning(f"LLM bad JSON: {text[:200]}")
+        data = []
+    now = datetime.now(timezone.utc)
+    insights: List[InsightOut] = []
+    for d in data[:4]:
+        try:
+            ins = InsightOut(
+                id=str(uuid.uuid4()),
+                title=str(d.get("title", "Health insight"))[:80],
+                summary=str(d.get("summary", ""))[:400],
+                metric=d.get("metric") if d.get("metric") in {m["metric"] for m in DEFAULT_METRICS_TEMPLATE} else None,
+                severity=d.get("severity") if d.get("severity") in ("info", "good", "warning", "critical") else "info",
+                action=str(d.get("action") or "")[:120] or None,
+                created_at=now,
+            )
+            insights.append(ins)
+        except Exception:
+            continue
+    if insights:
+        await db.insights.delete_many({"user_id": user["id"]})
+        await db.insights.insert_many([{**i.model_dump(), "user_id": user["id"]} for i in insights])
+    return insights
+
+
+@api.get("/insights", response_model=List[InsightOut])
+async def list_insights(user=Depends(current_user)):
+    docs = await db.insights.find({"user_id": user["id"]}, {"_id": 0, "user_id": 0}).sort("created_at", -1).to_list(20)
+    return [InsightOut(**d) for d in docs]
 
 
 @api.get("/sync/preferences", response_model=List[SyncPref])
@@ -944,6 +1113,8 @@ async def on_startup():
     await db.password_resets.create_index("expires_at", expireAfterSeconds=0)
     await db.migration_jobs.create_index([("user_id", 1), ("started_at", -1)])
     await db.notif_bridge_log.create_index([("user_id", 1), ("created_at", -1)])
+    await db.goals.create_index([("user_id", 1), ("metric", 1)], unique=True)
+    await db.insights.create_index([("user_id", 1), ("created_at", -1)])
     await seed_admin_user()
     log.info("HealthBridge Vault API v2 ready")
 

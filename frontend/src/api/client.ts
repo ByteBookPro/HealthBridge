@@ -225,4 +225,17 @@ export const api = {
     request<{ forwarded: boolean; id?: string; reason?: string }>('/bridge/notifications/event', {
       method: 'POST', body: JSON.stringify({ app, title, body, watch_platform }) }),
   notifLog: (limit = 50) => request<any[]>(`/bridge/notifications/log?limit=${limit}`),
+
+  // Goals (PRO)
+  goals: () => request<any[]>('/goals'),
+  createGoal: (metric: string, target: number, period: 'daily' | 'weekly' = 'daily') =>
+    request<any>('/goals', { method: 'POST', body: JSON.stringify({ metric, target, period }) }),
+  deleteGoal: (id: string) => request<any>(`/goals/${id}`, { method: 'DELETE' }),
+
+  // Weekly report (PRO)
+  weeklyReport: () => request<any>('/reports/weekly'),
+
+  // AI Insights (PRO)
+  generateInsights: () => request<any[]>('/insights/generate', { method: 'POST' }),
+  insights: () => request<any[]>('/insights'),
 };

@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeInDown } from 'react-native-reanimated';
+import { useRouter } from 'expo-router';
 import { theme } from '@/src/theme/theme';
 import AppText from '@/src/components/AppText';
 import GlassCard from '@/src/components/GlassCard';
@@ -17,6 +18,7 @@ import { useAuth } from '@/src/context/AuthContext';
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const router = useRouter();
   const [metrics, setMetrics] = useState<MetricSummary[]>([]);
   const [watches, setWatches] = useState<Watch[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -104,6 +106,29 @@ export default function Dashboard() {
               </AppText>
             </Pressable>
           </View>
+
+          {/* PRO AI Insights teaser */}
+          <Pressable onPress={() => router.push('/insights')} testID="open-insights">
+            <GlassCard glow style={{ marginTop: theme.space.md, padding: theme.space.md }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View style={[styles.aiBadge]}>
+                  <Ionicons name="sparkles" size={18} color={theme.colors.teal} />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <AppText weight="semi" size={14}>AI Health Insights</AppText>
+                    <View style={styles.proTag}>
+                      <AppText size={9} weight="bold" color={theme.colors.teal}>PRO</AppText>
+                    </View>
+                  </View>
+                  <AppText size={11} color={theme.colors.textDim} style={{ marginTop: 2 }}>
+                    Tap for personalized weekly findings & goals progress.
+                  </AppText>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={theme.colors.textMute} />
+              </View>
+            </GlassCard>
+          </Pressable>
 
           {/* Bridge status */}
           <Animated.View entering={FadeInDown.duration(400)}>
@@ -223,6 +248,12 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(45,212,191,0.3)',
     backgroundColor: 'rgba(45,212,191,0.08)',
   },
+  aiBadge: {
+    width: 36, height: 36, borderRadius: 12,
+    backgroundColor: 'rgba(45,212,191,0.15)', borderWidth: 1, borderColor: 'rgba(45,212,191,0.4)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  proTag: { backgroundColor: 'rgba(45,212,191,0.15)', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4 },
   bridgeRow: { flexDirection: 'row', alignItems: 'center' },
   pBadge: {
     flex: 1, alignItems: 'center', paddingVertical: 8,
