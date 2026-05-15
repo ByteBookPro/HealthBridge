@@ -239,7 +239,31 @@ export default function Settings() {
                 Appearance
               </AppText>
               <LinkRow icon="color-palette-outline" title="Theme & Colors" desc="Dark, light, or soothing presets" onPress={() => router.push('/appearance')} testID="settings-appearance" />
+              <LinkRow icon="grid-outline" title="Dashboard Metrics" desc="Choose which metrics to show" onPress={() => router.push('/customize-metrics')} testID="settings-metrics" />
               <LinkRow icon="bluetooth-outline" title="Watch Connection" desc="Bluetooth status & pairing" onPress={() => router.push('/setup')} testID="settings-bluetooth" last />
+            </GlassCard>
+          </Animated.View>
+
+          <Animated.View entering={FadeInDown.delay(240).duration(400)}>
+            <GlassCard style={{ marginTop: theme.space.md }}>
+              <AppText size={11} color={theme.colors.textDim} weight="med" style={styles.section}>
+                App Connections
+              </AppText>
+              <LinkRow 
+                icon="apps-outline" 
+                title="App Connectors" 
+                desc="Connect health apps to unlock more metrics" 
+                onPress={() => router.push('/app-connectors')} 
+                testID="settings-connectors" 
+              />
+              <LinkRow 
+                icon="sync-outline" 
+                title="Sync History" 
+                desc="View recent data imports" 
+                onPress={() => Alert.alert('Coming Soon', 'Sync history will be available in the next update')} 
+                testID="settings-sync-history" 
+                last 
+              />
             </GlassCard>
           </Animated.View>
 
