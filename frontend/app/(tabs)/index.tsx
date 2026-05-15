@@ -175,9 +175,15 @@ export default function Dashboard() {
               <View style={styles.ringsRow}>
                 <ActivityRings size={170} rings={rings} thickness={14} />
                 <View style={{ flex: 1, marginLeft: theme.space.md, gap: 14 }}>
-                  <RingLine label="Move" value={calories ? `${Math.round(calories.current)}` : '—'} unit="kcal" colorFrom="#F97316" colorTo="#EF4444" />
-                  <RingLine label="Exercise" value={workouts ? `${Math.round(workouts.current)}` : '—'} unit="min" colorFrom="#10B981" colorTo="#2DD4BF" />
-                  <RingLine label="Stand" value={stand ? `${Math.round(stand.current)}` : '—'} unit="hr" colorFrom="#3B82F6" colorTo="#8B5CF6" />
+                  <Pressable onPress={() => router.push('/metric/calories')}>
+                    <RingLine label="Move" value={calories ? `${Math.round(calories.current)}` : '—'} unit="kcal" colorFrom="#F97316" colorTo="#EF4444" />
+                  </Pressable>
+                  <Pressable onPress={() => router.push('/metric/workouts')}>
+                    <RingLine label="Exercise" value={workouts ? `${Math.round(workouts.current)}` : '—'} unit="min" colorFrom="#10B981" colorTo="#2DD4BF" />
+                  </Pressable>
+                  <Pressable onPress={() => router.push('/metric/stand')}>
+                    <RingLine label="Stand" value={stand ? `${Math.round(stand.current)}` : '—'} unit="hr" colorFrom="#3B82F6" colorTo="#8B5CF6" />
+                  </Pressable>
                 </View>
               </View>
             </GlassCard>

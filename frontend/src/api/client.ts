@@ -238,4 +238,8 @@ export const api = {
   // AI Insights (PRO)
   generateInsights: () => request<any[]>('/insights/generate', { method: 'POST' }),
   insights: () => request<any[]>('/insights'),
+
+  // Metric detail (enhanced health data)
+  metricDetail: (metric: string, timeRange: string = 'week') =>
+    request<any>(`/metrics/${metric}/detail?time_range=${timeRange}`),
 };
