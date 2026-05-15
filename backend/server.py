@@ -1115,6 +1115,38 @@ async def admin_audit(user=Depends(admin_only), limit: int = 100):
     return {"sync_events": events, "notifications": notifications}
 
 
+@api.get("/admin/billing/health")
+async def admin_billing_health(user=Depends(admin_only)):
+    """Confirms whether Stripe is wired with a real live/test key (vs the
+    dev-mode `sk_test_emergent` placeholder) and whether a webhook secret is set.
+    Use this AFTER swapping in your production Stripe key to validate the swap."""
+    key = STRIPE_API_KEY or ""
+    masked = (key[:7] + "…" + key[-4:]) if len(key) > 12 else "(unset)"
+    mode = "unconfigured"
+    if key.startswith("sk_live_"):
+        mode = "live"
+    elif key.startswith("sk_test_") and key != "sk_test_emergent":
+        mode = "test"
+    elif key == "sk_test_emergent" or not key:
+        mode = "dev_fallback"
+    info: dict = {
+        "stripe_key_mode": mode,
+        "stripe_key_masked": masked,
+        "webhook_secret_configured": bool(STRIPE_WEBHOOK_SECRET) and not STRIPE_WEBHOOK_SECRET.startswith("whsec_test_"),
+        "price_id": STRIPE_PRICE_ID,
+        "app_public_url": APP_PUBLIC_URL,
+    }
+    # If a real key is wired, try a lightweight call to confirm it actually works
+    if mode in ("live", "test"):
+        try:
+            stripe.Balance.retrieve()
+            info["stripe_reachable"] = True
+        except Exception as e:  # noqa: BLE001
+            info["stripe_reachable"] = False
+            info["stripe_error"] = str(e)[:200]
+    return info
+
+
 # ---------- Privacy/legal endpoints (raw markdown for external indexing) ----------
 @api.get("/legal/privacy")
 async def get_privacy():
