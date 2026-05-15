@@ -171,6 +171,16 @@ export default function Settings() {
           <Animated.View entering={FadeInDown.delay(160).duration(400)}>
             <GlassCard style={{ marginTop: theme.space.md }}>
               <AppText size={11} color={theme.colors.textDim} weight="med" style={styles.section}>
+                Appearance
+              </AppText>
+              <LinkRow icon="color-palette-outline" title="Theme & Colors" desc="Dark, light, or soothing presets" onPress={() => router.push('/appearance')} testID="settings-appearance" />
+              <LinkRow icon="bluetooth-outline" title="Watch Connection" desc="Bluetooth status & pairing" onPress={() => router.push('/setup')} testID="settings-bluetooth" last />
+            </GlassCard>
+          </Animated.View>
+
+          <Animated.View entering={FadeInDown.delay(200).duration(400)}>
+            <GlassCard style={{ marginTop: theme.space.md }}>
+              <AppText size={11} color={theme.colors.textDim} weight="med" style={styles.section}>
                 Data & Privacy
               </AppText>
               <LinkRow icon="git-compare-outline" title="Migration Wizard" desc="Switch iOS↔Android with all your history" onPress={() => router.push('/migrate')} testID="settings-migrate" />

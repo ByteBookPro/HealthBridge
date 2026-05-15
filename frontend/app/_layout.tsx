@@ -11,7 +11,8 @@ import {
 } from '@expo-google-fonts/manrope';
 import { View, ActivityIndicator } from 'react-native';
 import { AuthProvider, useAuth } from '@/src/context/AuthContext';
-import { theme } from '@/src/theme/theme';
+import { ThemeProvider, useTheme, defaultTheme } from '@/src/context/ThemeContext';
+import { theme as legacyTheme } from '@/src/theme/theme';
 import { registerForPushAsync } from '@/src/services/pushNotifications';
 
 function PushRegistrar() {
@@ -25,6 +26,23 @@ function PushRegistrar() {
   return null;
 }
 
+function ThemedStack() {
+  const { theme, isDark } = useTheme();
+  
+  return (
+    <>
+      <StatusBar style={isDark ? 'light' : 'dark'} />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: theme.colors.bg },
+          animation: 'fade',
+        }}
+      />
+    </>
+  );
+}
+
 export default function RootLayout() {
   const [loaded] = useFonts({
     Outfit_500Medium, Outfit_600SemiBold, Outfit_700Bold,
@@ -33,25 +51,20 @@ export default function RootLayout() {
 
   if (!loaded) {
     return (
-      <View style={{ flex: 1, backgroundColor: theme.colors.bg, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator color={theme.colors.teal} />
+      <View style={{ flex: 1, backgroundColor: defaultTheme.colors.bg, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator color={defaultTheme.colors.primary} />
       </View>
     );
   }
 
   return (
     <SafeAreaProvider>
-      <AuthProvider>
-        <PushRegistrar />
-        <StatusBar style="light" />
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: theme.colors.bg },
-            animation: 'fade',
-          }}
-        />
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <PushRegistrar />
+          <ThemedStack />
+        </AuthProvider>
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }
