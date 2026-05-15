@@ -96,6 +96,15 @@ export default function Onboarding() {
               <AppText size={13} weight="semi" color={theme.colors.teal}>Sign in</AppText>
             </AppText>
           </Pressable>
+          <View style={styles.legalRow}>
+            <Pressable onPress={() => router.push('/privacy')} testID="onboarding-privacy-link" hitSlop={6}>
+              <AppText size={11} color={theme.colors.textMute}>Privacy</AppText>
+            </Pressable>
+            <AppText size={11} color={theme.colors.textMute}> · </AppText>
+            <Pressable onPress={() => router.push('/terms')} testID="onboarding-terms-link" hitSlop={6}>
+              <AppText size={11} color={theme.colors.textMute}>Terms</AppText>
+            </Pressable>
+          </View>
         </Animated.View>
       </SafeAreaView>
     </View>
@@ -124,4 +133,5 @@ const styles = StyleSheet.create({
   },
   cta: { marginTop: theme.space.lg, marginBottom: theme.space.md, gap: theme.space.md },
   signIn: { alignItems: 'center', paddingVertical: 8 },
+  legalRow: { flexDirection: 'row', justifyContent: 'center', paddingVertical: 4 },
 });

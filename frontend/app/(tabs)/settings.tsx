@@ -14,7 +14,7 @@ import { useAuth } from '@/src/context/AuthContext';
 import { api, type ConflictPolicy } from '@/src/api/client';
 
 export default function Settings() {
-  const { user, logout } = useAuth();
+  const { user, logout, refresh } = useAuth();
   const router = useRouter();
   const [policy, setPolicy] = useState<ConflictPolicy | null>(null);
 
@@ -74,14 +74,25 @@ export default function Settings() {
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <Ionicons name="diamond" size={20} color={theme.colors.teal} />
                 <AppText weight="heading" size={18} style={{ marginLeft: 10, letterSpacing: -0.3 }}>
-                  {user?.subscription?.plan === 'pro' ? 'HealthBridge PRO' : 'Upgrade to PRO'}
+                  {user?.subscription?.is_trial
+                    ? `PRO Trial · ${user.subscription.trial_days_left} day${user.subscription.trial_days_left === 1 ? '' : 's'} left`
+                    : user?.subscription?.plan === 'pro'
+                      ? 'HealthBridge PRO'
+                      : 'Upgrade to PRO'}
                 </AppText>
               </View>
               <AppText size={12} color={theme.colors.textDim} style={{ marginTop: 8, lineHeight: 18 }}>
-                Multi-watch bridge · Raw archive export (CSV/JSON/GPX) · Real-time push · Priority support
+                {user?.subscription?.is_trial
+                  ? 'All premium features unlocked. Subscribe before the trial ends to keep them.'
+                  : 'Multi-watch bridge · AI Insights · Goals · Weekly reports · Raw export · Priority support'}
               </AppText>
+              {user?.subscription?.is_trial && (
+                <View style={styles.trialBar}>
+                  <View style={[styles.trialBarFill, { width: `${Math.min(100, Math.max(5, (user.subscription.trial_days_left / 30) * 100))}%` }]} />
+                </View>
+              )}
               <View style={{ height: 14 }} />
-              {user?.subscription?.plan === 'pro' ? (
+              {user?.subscription?.plan === 'pro' && !user?.subscription?.is_trial ? (
                 <PrimaryButton
                   title="Manage Subscription"
                   variant="secondary"
@@ -97,12 +108,13 @@ export default function Settings() {
                 />
               ) : (
                 <PrimaryButton
-                  title="Subscribe — $4.99/mo"
+                  title={user?.subscription?.is_trial ? 'Subscribe — $4.99/mo' : 'Start 30-day free trial'}
                   onPress={async () => {
                     try {
                       const r = await api.checkout();
                       if (Platform.OS === 'web') window.open(r.url, '_blank');
                       else await WebBrowser.openBrowserAsync(r.url);
+                      await refresh();
                     } catch (e: any) { Alert.alert('Error', e?.message ?? 'Failed'); }
                   }}
                   testID="subscribe-btn"
@@ -174,7 +186,9 @@ export default function Settings() {
                 About
               </AppText>
               <LinkRow icon="information-circle-outline" title="Version" desc="HealthBridge Vault · v1.0.0" />
-              <LinkRow icon="heart-outline" title="Send Feedback" desc="Tell us what to bridge next" onPress={() => Alert.alert('Thank you', 'Feedback noted ❤︎')} last />
+              <LinkRow icon="heart-outline" title="Send Feedback" desc="Tell us what to bridge next" onPress={() => Alert.alert('Thank you', 'Feedback noted ❤︎')} />
+              <LinkRow icon="lock-closed-outline" title="Privacy Policy" desc="How we handle your data" onPress={() => router.push('/privacy')} testID="settings-privacy" />
+              <LinkRow icon="document-outline" title="Terms of Service" desc="Subscription, liability, refunds" onPress={() => router.push('/terms')} testID="settings-terms" last />
             </GlassCard>
           </Animated.View>
 
@@ -270,5 +284,14 @@ const styles = StyleSheet.create({
     width: 32, height: 32, borderRadius: 10,
     backgroundColor: 'rgba(45,212,191,0.12)', borderWidth: 1, borderColor: 'rgba(45,212,191,0.3)',
     alignItems: 'center', justifyContent: 'center',
+  },
+  trialBar: {
+    height: 4, borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    marginTop: 10, overflow: 'hidden',
+  },
+  trialBarFill: {
+    height: '100%', borderRadius: 2,
+    backgroundColor: theme.colors.teal,
   },
 });

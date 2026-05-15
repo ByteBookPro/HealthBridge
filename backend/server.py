@@ -91,6 +91,8 @@ class SubscriptionOut(BaseModel):
     current_period_end: Optional[datetime] = None
     cancel_at_period_end: bool = False
     stripe_customer_id: Optional[str] = None
+    is_trial: bool = False
+    trial_days_left: int = 0
 
 
 class UserOut(BaseModel):
@@ -263,8 +265,22 @@ class InsightOut(BaseModel):
 
 def pro_only(user: dict) -> None:
     sub = user.get("subscription") or {}
-    if sub.get("plan") != "pro":
-        raise HTTPException(402, "HealthBridge PRO required")
+    status = sub.get("status")
+    plan = sub.get("plan")
+    if status in ("active", "trialing") and plan == "pro":
+        return
+    raise HTTPException(402, "HealthBridge PRO required")
+
+
+def trial_subscription() -> dict:
+    """Default 30-day PRO trial granted to every new account."""
+    return {
+        "plan": "pro",
+        "status": "trialing",
+        "current_period_end": datetime.now(timezone.utc) + timedelta(days=30),
+        "cancel_at_period_end": False,
+        "is_trial": True,
+    }
 
 
 
@@ -319,6 +335,16 @@ async def admin_only(user=Depends(current_user)) -> dict:
 
 def serialize_user(user: dict) -> dict:
     sub = user.get("subscription") or {}
+    cpe = sub.get("current_period_end")
+    if isinstance(cpe, datetime) and cpe.tzinfo is None:
+        cpe = cpe.replace(tzinfo=timezone.utc)
+    is_trial = bool(sub.get("is_trial")) or sub.get("status") == "trialing"
+    trial_days_left = 0
+    if is_trial and isinstance(cpe, datetime):
+        delta = cpe - datetime.now(timezone.utc)
+        trial_days_left = max(0, delta.days + (1 if delta.total_seconds() > 0 else 0))
+        if delta.total_seconds() <= 0:
+            is_trial = False
     return {
         "id": user["id"],
         "email": user["email"],
@@ -328,9 +354,11 @@ def serialize_user(user: dict) -> dict:
         "subscription": {
             "plan": sub.get("plan", "free"),
             "status": sub.get("status", "inactive"),
-            "current_period_end": sub.get("current_period_end"),
+            "current_period_end": cpe,
             "cancel_at_period_end": bool(sub.get("cancel_at_period_end")),
             "stripe_customer_id": sub.get("stripe_customer_id"),
+            "is_trial": is_trial,
+            "trial_days_left": trial_days_left,
         },
     }
 
@@ -434,7 +462,7 @@ async def register(payload: RegisterIn):
                                 "password": hash_pw(payload.password),
                                 "created_at": datetime.now(timezone.utc),
                                 "is_admin": False,
-                                "subscription": {"plan": "free", "status": "inactive"}})
+                                "subscription": trial_subscription()})
     await seed_user_data(user_id)
     return TokenOut(access_token=create_token(user_id, "access"),
                     refresh_token=create_token(user_id, "refresh"),
@@ -1085,6 +1113,23 @@ async def admin_audit(user=Depends(admin_only), limit: int = 100):
     events = await db.sync_events.find({}, {"_id": 0}).sort("created_at", -1).to_list(limit)
     notifications = await db.notifications.find({}, {"_id": 0}).sort("created_at", -1).to_list(limit)
     return {"sync_events": events, "notifications": notifications}
+
+
+  // Existing trial users should also get the trial flag on /auth/me
+  // (the migration is automatic — older "free/inactive" users see Free plan)
+  if not existing.get("is_admin") and existing.get("subscription", {}).get("plan") == "free":
+        # Grandfather: keep them on free. New users get trials automatically.
+        pass
+
+# ---------- Privacy/legal endpoints (raw markdown for external indexing) ----------
+@api.get("/legal/privacy")
+async def get_privacy():
+    return {"version": "2026-05-15", "doc": "privacy", "url": f"{APP_PUBLIC_URL}/privacy"}
+
+
+@api.get("/legal/terms")
+async def get_terms():
+    return {"version": "2026-05-15", "doc": "terms", "url": f"{APP_PUBLIC_URL}/terms"}
 
 
 # ---------- Root ----------
