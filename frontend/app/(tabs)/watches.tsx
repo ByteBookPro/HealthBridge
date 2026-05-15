@@ -3,6 +3,7 @@ import { View, StyleSheet, ScrollView, Pressable, RefreshControl } from 'react-n
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { theme } from '@/src/theme/theme';
 import AppText from '@/src/components/AppText';
@@ -27,6 +28,7 @@ const WATCH_META = {
 export default function Watches() {
   const [watches, setWatches] = useState<Watch[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const router = useRouter();
 
   const load = useCallback(async () => {
     try { setWatches(await api.watches()); } catch {}
@@ -58,9 +60,49 @@ export default function Watches() {
           <View style={styles.head}>
             <AppText weight="heading" size={28} style={{ letterSpacing: -0.5 }}>Your watches</AppText>
             <AppText size={13} color={theme.colors.textDim} style={{ marginTop: 4 }}>
-              Bridge Apple Watch ↔ Galaxy Watch across iOS and Android.
+              Bridge health data + forward notifications across ecosystems.
             </AppText>
           </View>
+
+          <Pressable
+            onPress={() => router.push('/connect')}
+            testID="watches-open-wizard"
+          >
+            <GlassCard glow style={{ marginBottom: theme.space.md, padding: theme.space.md }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View style={[styles.iconBox, { borderColor: 'rgba(45,212,191,0.4)', backgroundColor: 'rgba(45,212,191,0.12)' }]}>
+                  <Ionicons name="git-compare-outline" size={20} color={theme.colors.teal} />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <AppText weight="semi" size={14}>Connect Wizard</AppText>
+                  <AppText size={11} color={theme.colors.textDim} style={{ marginTop: 2 }}>
+                    Step-by-step bridge setup. Honest about what's possible.
+                  </AppText>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={theme.colors.textMute} />
+              </View>
+            </GlassCard>
+          </Pressable>
+
+          <Pressable
+            onPress={() => router.push('/notifications')}
+            testID="watches-open-notifications"
+          >
+            <GlassCard style={{ marginBottom: theme.space.md, padding: theme.space.md }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View style={[styles.iconBox, { borderColor: 'rgba(59,130,246,0.4)', backgroundColor: 'rgba(59,130,246,0.12)' }]}>
+                  <Ionicons name="notifications-outline" size={20} color={theme.colors.samsung} />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <AppText weight="semi" size={14}>Notification Bridge</AppText>
+                  <AppText size={11} color={theme.colors.textDim} style={{ marginTop: 2 }}>
+                    Forward iPhone notifications to your Galaxy Watch over BLE.
+                  </AppText>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={theme.colors.textMute} />
+              </View>
+            </GlassCard>
+          </Pressable>
 
           {watches.map((w, i) => {
             const meta = WATCH_META[w.platform as 'apple' | 'samsung'] ?? WATCH_META.apple;

@@ -209,4 +209,20 @@ export const api = {
     request<{ recipients: number; sent: number }>('/admin/broadcast', {
       method: 'POST', body: JSON.stringify({ title, body, data }) }),
   adminAudit: () => request<{ sync_events: any[]; notifications: any[] }>('/admin/audit'),
+
+  // Migration wizard
+  migrateStart: (source: string, target: string, range_days = 90, metrics?: string[]) =>
+    request<any>('/migrate/start', { method: 'POST',
+      body: JSON.stringify({ source, target, range_days, metrics }) }),
+  migrateJob: (id: string) => request<any>(`/migrate/jobs/${id}`),
+  migrateList: () => request<any[]>('/migrate/jobs'),
+
+  // Notification bridge
+  notifSettings: () => request<any>('/bridge/notifications/settings'),
+  updateNotifSettings: (s: any) =>
+    request<any>('/bridge/notifications/settings', { method: 'PUT', body: JSON.stringify(s) }),
+  notifEvent: (app: string, title: string, body: string, watch_platform: 'apple' | 'samsung' = 'samsung') =>
+    request<{ forwarded: boolean; id?: string; reason?: string }>('/bridge/notifications/event', {
+      method: 'POST', body: JSON.stringify({ app, title, body, watch_platform }) }),
+  notifLog: (limit = 50) => request<any[]>(`/bridge/notifications/log?limit=${limit}`),
 };

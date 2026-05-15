@@ -14,9 +14,9 @@ const HERO =
   'https://images.unsplash.com/photo-1629641538202-4bf2731a8656?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA3MDR8MHwxfHNlYXJjaHwxfHxzbWFydHdhdGNoJTIwZGFyayUyMHByZW1pdW18ZW58MHx8fHwxNzc4ODQ0Mjc1fDA&ixlib=rb-4.1.0&q=85';
 
 const FEATURES = [
-  { icon: 'sync' as const, title: 'Bidirectional Sync', desc: 'Apple Health ⇄ Samsung Health ⇄ Google Fit' },
-  { icon: 'shield-checkmark' as const, title: 'Zero-Knowledge Vault', desc: 'End-to-end encrypted, never read by us' },
-  { icon: 'watch' as const, title: 'Any Watch, Any Phone', desc: 'Apple Watch on Android. Galaxy Watch on iPhone.' },
+  { icon: 'sync' as const, title: 'Health data bridge', desc: 'Apple Health ⇄ Samsung Health ⇄ Google Fit, both directions' },
+  { icon: 'notifications-outline' as const, title: 'iPhone notifs → Galaxy Watch', desc: 'Forward calls, texts, WhatsApp over BLE' },
+  { icon: 'shield-checkmark' as const, title: 'Zero-knowledge vault', desc: 'End-to-end encrypted. We never read your data.' },
 ];
 
 export default function Onboarding() {

@@ -18,7 +18,8 @@ function PushRegistrar() {
   const { isAuthed } = useAuth();
   useEffect(() => {
     if (isAuthed) {
-      registerForPushAsync().catch(() => {});
+      // Wrap in try/catch — expo-notifications was removed from Expo Go SDK 53+
+      try { registerForPushAsync().catch(() => {}); } catch {}
     }
   }, [isAuthed]);
   return null;

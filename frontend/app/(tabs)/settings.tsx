@@ -161,6 +161,7 @@ export default function Settings() {
               <AppText size={11} color={theme.colors.textDim} weight="med" style={styles.section}>
                 Data & Privacy
               </AppText>
+              <LinkRow icon="git-compare-outline" title="Migration Wizard" desc="Switch iOS↔Android with all your history" onPress={() => router.push('/migrate')} testID="settings-migrate" />
               <LinkRow icon="lock-closed-outline" title="Privacy Vault" desc="Biometric-gated archive" onPress={() => router.push('/(tabs)/vault')} testID="settings-vault" />
               <LinkRow icon="shield-checkmark-outline" title="Permissions" desc="HealthKit · Health Connect · Samsung Health" onPress={() => Alert.alert('Permissions', 'Manage health permissions in a dev build via OS-level settings.')} testID="settings-permissions" />
               <LinkRow icon="document-text-outline" title="Audit Log" desc="Every sync, every direction" onPress={() => router.push('/(tabs)/sync')} testID="settings-audit" last />
