@@ -1,85 +1,274 @@
-# HealthBridge Vault — Architecture
+# HealthBridge Vault - System Architecture
+
+## Overview
 
 ```
-┌────────────────────┐       ┌──────────────────────┐       ┌─────────────────┐
-│  iOS · Apple Watch │──BLE──│  iPhone (Expo app)   │       │  Apple Health   │
-│  HealthKit         │◀─────▶│  react-native-health │◀─────▶│  HK store       │
-└────────────────────┘       │  expo-secure-store   │       └─────────────────┘
-                             │  expo-notifications  │
-┌────────────────────┐       │  expo-local-auth     │       ┌─────────────────┐
-│ Android · Galaxy   │──BLE──│  Same JS code (95%+) │       │ Health Connect  │
-│ Watch / Samsung    │◀─────▶│  react-native-health-│◀─────▶│ Samsung Health  │
-│ Health             │       │  connect             │       │ Google Fit      │
-└────────────────────┘       └──────────┬───────────┘       └─────────────────┘
-                                        │ TLS 1.3
-                                        ▼
-                          ┌─────────────────────────────┐
-                          │   FastAPI Bridge Service    │
-                          │   (k8s, /api prefix)        │
-                          │  ┌──────────────────────┐   │
-                          │  │ JWT auth · bcrypt    │   │
-                          │  │ Cross-ecosystem      │   │
-                          │  │ normalisation        │   │
-                          │  │ Conflict resolution  │   │
-                          │  │ Stripe webhook       │   │
-                          │  │ Expo push dispatcher │   │
-                          │  │ Admin RBAC           │   │
-                          │  └──────────┬───────────┘   │
-                          └─────────────┼───────────────┘
-                                        │
-                          ┌─────────────▼───────────────┐
-                          │   MongoDB (encrypted vol)   │
-                          │  users · watches            │
-                          │  metric_summaries · events  │
-                          │  push_tokens · stripe_events│
-                          └─────────────────────────────┘
-
-                         ┌─────────────┐    ┌─────────────────────┐
-                         │  Stripe     │    │  Expo Push Service  │
-                         │  Billing    │    │  exp.host           │
-                         └─────────────┘    └──────────┬──────────┘
-                                                       ▼
-                                                  APNs / FCM
+┌─────────────────────────────────────────────────────────────────┐
+│                        Client Layer                              │
+├─────────────────────────────────────────────────────────────────┤
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
+│  │   iOS App    │  │ Android App  │  │  Web Preview │          │
+│  │  (Expo Go)   │  │  (Expo Go)   │  │  (localhost) │          │
+│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘          │
+│         │                 │                 │                   │
+│         └─────────────────┼─────────────────┘                   │
+│                           │                                     │
+│              ┌────────────▼────────────┐                        │
+│              │   Native Health Bridge   │                       │
+│              │  (HealthKit/HealthConnect)│                      │
+│              └────────────┬────────────┘                        │
+└───────────────────────────┼─────────────────────────────────────┘
+                            │
+                            │ HTTPS/WSS
+                            │
+┌───────────────────────────┼─────────────────────────────────────┐
+│                        API Layer                                 │
+├───────────────────────────┼─────────────────────────────────────┤
+│              ┌────────────▼────────────┐                        │
+│              │     FastAPI Server      │                        │
+│              │      (Python 3.11)      │                        │
+│              │    - JWT Auth           │                        │
+│              │    - CORS enabled       │                        │
+│              │    - Rate limiting      │                        │
+│              └────────────┬────────────┘                        │
+│                           │                                     │
+│         ┌─────────────────┼─────────────────┐                   │
+│         │                 │                 │                   │
+│   ┌─────▼─────┐    ┌─────▼─────┐    ┌─────▼─────┐              │
+│   │  MongoDB  │    │  Stripe   │    │ Emergent  │              │
+│   │ Database  │    │  Billing  │    │   LLM     │              │
+│   └───────────┘    └───────────┘    └───────────┘              │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-## Modules
+## Technology Stack
 
-### Client (`/app/frontend`)
-- **Routing**: expo-router file-based.  `/(auth)/*` for unauthed, `/(tabs)/*` for users, `/admin/*` for admins (RBAC enforced in `_layout.tsx`).
-- **State**: `AuthContext` (JWT in expo-secure-store) + per-screen React state.
-- **Native bridges** (loaded conditionally):
-  - `react-native-health` (iOS HealthKit) via `/src/services/healthBridge.ts`
-  - `react-native-health-connect` (Android Health Connect)
-  - `expo-local-authentication` (biometric vault gate)
-  - `expo-notifications` (Expo Push)
-- **UI** is 100% React Native (`View`, `Text`, `Pressable`, `Switch`, `TextInput`) – no HTML elements.
+### Frontend
+| Technology | Version | Purpose |
+|------------|---------|----------|
+| Expo | SDK 52 | React Native framework |
+| expo-router | 4.x | File-based navigation |
+| React Native | 0.76 | UI framework |
+| TypeScript | 5.3 | Type safety |
+| react-native-reanimated | 3.16 | Animations |
+| react-native-svg | 15.9 | Charts/Graphics |
+| expo-secure-store | 14.0 | Secure token storage |
+| zustand | 5.0 | State management |
 
-### Server (`/app/backend/server.py`)
-- FastAPI · Motor (async MongoDB)
-- All routes mounted under `/api/*` to match the Kubernetes ingress.
-- Auth: bcrypt + JWT (HS256, 60-min access, 14-day refresh).
-- Subscriptions: Stripe Customer + Checkout + Customer Portal + Webhook with idempotency on `stripe_events.id`.
-- Push: `send_push(user_id, title, body, data)` → POSTs to `https://exp.host/--/api/v2/push/send`.
-- Admin: gated by `is_admin=true`; idempotent admin seed on startup.
+### Backend
+| Technology | Version | Purpose |
+|------------|---------|----------|
+| FastAPI | 0.115 | API framework |
+| Python | 3.11+ | Runtime |
+| Motor | 3.7 | Async MongoDB driver |
+| PyJWT | 2.10 | JWT authentication |
+| bcrypt | 4.2 | Password hashing |
+| Stripe | 13.0+ | Payment processing |
+| emergentintegrations | 0.1 | LLM integration |
 
-### Cross-ecosystem normalization
-| App Health field | Apple HealthKit | Health Connect | Samsung Health |
-|---|---|---|---|
-| `steps` | HKQuantityTypeIdentifierStepCount | Steps | StepCount |
-| `heart_rate` | HKQuantityTypeIdentifierHeartRate | HeartRate | HeartRate |
-| `sleep` | HKCategoryTypeIdentifierSleepAnalysis | SleepSession | Sleep |
-| `spo2` | HKQuantityTypeIdentifierOxygenSaturation | OxygenSaturation | OxygenSaturation |
-| `ecg` | HKElectrocardiogramType | (manual) | (manual) |
-| `calories` | HKQuantityTypeIdentifierActiveEnergyBurned | TotalCaloriesBurned | TotalCalories |
-| `workouts` | HKWorkoutType | ExerciseSession | Exercise |
+### Infrastructure
+| Technology | Purpose |
+|------------|----------|
+| MongoDB | Primary database |
+| Redis (optional) | Caching, rate limiting |
+| Nginx | Reverse proxy |
+| Docker | Containerization |
 
-### Conflict resolution
-Backed by `db.conflict_policy.policy ∈ {latest_wins, apple_wins, samsung_wins, manual}` per-user; resolution happens on `/api/metrics/ingest`.
+## Database Schema
 
-### Security
-- TLS 1.3 in transit, AES-256 at rest (MongoDB encrypted volume).
-- JWT secrets in `.env`, never in code.
-- Biometric gate on Privacy Vault before any export.
-- Webhook signature verification (`stripe.Webhook.construct_event`).
-- Idempotent webhook handling via `stripe_events` collection.
-- Password reset tokens expire after 1h (TTL index) and are single-use.
+### Collections
+
+#### users
+```javascript
+{
+  id: "uuid",
+  email: "user@example.com",
+  password_hash: "$2b$12$...",
+  name: "John Doe",
+  role: "pro", // "free" | "pro" | "admin"
+  subscription: {
+    plan: "pro",
+    status: "active",
+    stripe_customer_id: "cus_...",
+    stripe_subscription_id: "sub_...",
+    current_period_end: ISODate(),
+    is_trial: true,
+    trial_end: ISODate()
+  },
+  created_at: ISODate(),
+  updated_at: ISODate()
+}
+```
+
+#### metric_summaries
+```javascript
+{
+  user_id: "uuid",
+  metric: "steps",
+  label: "Steps",
+  current: 12500,
+  goal: 10000,
+  unit: "steps",
+  trend: [11200, 10800, 12500, ...], // Last 14 days
+  delta_pct: 8.5,
+  apple_value: 6500,
+  samsung_value: 6000,
+  updated_at: ISODate()
+}
+```
+
+#### watches
+```javascript
+{
+  id: "uuid",
+  user_id: "uuid",
+  platform: "apple", // "apple" | "samsung" | "fitbit" | etc.
+  model: "Apple Watch Series 9",
+  os_version: "watchOS 11",
+  battery: 85,
+  last_sync_at: ISODate(),
+  status: "connected",
+  created_at: ISODate()
+}
+```
+
+#### sync_events
+```javascript
+{
+  id: "uuid",
+  user_id: "uuid",
+  metric: "steps",
+  source: "apple",
+  destination: "cloud",
+  value: 1250,
+  unit: "steps",
+  status: "success",
+  created_at: ISODate()
+}
+```
+
+#### goals
+```javascript
+{
+  id: "uuid",
+  user_id: "uuid",
+  metric: "steps",
+  target: 12000,
+  period: "daily",
+  created_at: ISODate()
+}
+```
+
+#### health_setups
+```javascript
+{
+  user_id: "uuid",
+  platform: "ios",
+  watches: ["apple", "fitbit"],
+  health_kit_granted: true,
+  health_connect_granted: false,
+  setup_completed: true,
+  updated_at: ISODate()
+}
+```
+
+#### insights
+```javascript
+{
+  id: "uuid",
+  user_id: "uuid",
+  title: "Great Sleep Week!",
+  body: "Your sleep quality improved by 15%...",
+  category: "sleep",
+  priority: "medium",
+  created_at: ISODate()
+}
+```
+
+## Security Architecture
+
+### Authentication Flow
+```
+1. User submits credentials
+2. Server validates against bcrypt hash
+3. Server generates JWT (access + refresh tokens)
+4. Client stores tokens in SecureStore
+5. Client includes Bearer token in all API requests
+6. Server validates JWT on each request
+7. Auto-refresh before expiry
+```
+
+### Token Structure
+```javascript
+// Access Token (1 hour)
+{
+  sub: "user-uuid",
+  role: "pro",
+  iat: 1715788800,
+  exp: 1715792400
+}
+
+// Refresh Token (30 days)
+{
+  sub: "user-uuid",
+  type: "refresh",
+  iat: 1715788800,
+  exp: 1718380800
+}
+```
+
+### Data Encryption
+- Passwords: bcrypt with cost factor 12
+- Tokens: HS256 JWT signing
+- API: HTTPS/TLS 1.3
+- Health data: AES-256-GCM at rest (future)
+
+## Health Data Flow
+
+### Sync Process
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│ Apple Watch │────▶│  HealthKit  │────▶│ Health      │
+│             │     │  (iOS)      │     │ Bridge      │
+└─────────────┘     └─────────────┘     └──────┬──────┘
+                                               │
+                                               ▼
+                                        ┌─────────────┐
+                                        │  Backend    │
+                                        │  API        │
+                                        └──────┬──────┘
+                                               │
+                                               ▼
+                                        ┌─────────────┐
+                                        │  MongoDB    │
+                                        └──────┬──────┘
+                                               │
+                                               ▼
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│ Galaxy Watch│◀────│  Health     │◀────│ Health      │
+│             │     │  Connect    │     │ Bridge      │
+└─────────────┘     └─────────────┘     └─────────────┘
+```
+
+## Scalability Considerations
+
+### Current Architecture (MVP)
+- Single FastAPI instance
+- Single MongoDB instance
+- Stateless JWT auth
+
+### Production Scaling
+1. **Horizontal Scaling**: Multiple FastAPI instances behind load balancer
+2. **Database**: MongoDB replica set, sharding by user_id
+3. **Caching**: Redis for frequently accessed data
+4. **Queue**: Celery/Redis for background sync jobs
+5. **CDN**: Static assets via CloudFront/Cloudflare
+
+## Monitoring & Observability
+
+### Recommended Stack
+- **Logging**: Structured JSON logs → ELK/CloudWatch
+- **Metrics**: Prometheus + Grafana
+- **Tracing**: OpenTelemetry
+- **Errors**: Sentry
+- **Uptime**: Pingdom/UptimeRobot
