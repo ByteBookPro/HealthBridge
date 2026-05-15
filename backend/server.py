@@ -429,6 +429,29 @@ async def seed_admin_user() -> None:
     log.info(f"Admin seeded: {ADMIN_EMAIL}")
 
 
+async def seed_demo_user() -> None:
+    """Idempotent demo seed — the credentials pre-filled on the login screen.
+    Gives a fresh tester a working sign-in on first tap. Demo user starts on a
+    30-day PRO trial like any new sign-up."""
+    demo_email = "demo@healthbridge.app"
+    demo_pw = "Demo1234!"
+    if await db.users.find_one({"email": demo_email}):
+        return
+    user_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    await db.users.insert_one({
+        "id": user_id, "email": demo_email, "name": "Demo Tester",
+        "password": hash_pw(demo_pw), "created_at": now,
+        "is_admin": False,
+        "subscription": {
+            "plan": "pro", "status": "trialing", "is_trial": True,
+            "trial_ends_at": now + timedelta(days=30),
+        },
+    })
+    await seed_user_data(user_id)
+    log.info(f"Demo user seeded: {demo_email}")
+
+
 # ---------- Push helper ----------
 async def send_push(user_id: str, title: str, body: str, data: Optional[dict] = None) -> dict:
     tokens = await db.push_tokens.find({"user_id": user_id, "active": True}, {"_id": 0}).to_list(20)
@@ -1187,6 +1210,7 @@ async def on_startup():
     await db.goals.create_index([("user_id", 1), ("metric", 1)], unique=True)
     await db.insights.create_index([("user_id", 1), ("created_at", -1)])
     await seed_admin_user()
+    await seed_demo_user()
     log.info("HealthBridge Vault API v2 ready")
 
 
