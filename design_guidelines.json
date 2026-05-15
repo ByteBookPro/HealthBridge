@@ -1,0 +1,236 @@
+{
+  "project": {
+    "name": "HealthBridge Vault",
+    "description": "A luxury cross-platform mobile app bridging Apple Health and Samsung/Google Fit data into a single, highly secure vault.",
+    "stack": "Expo React Native (SDK 54)",
+    "tone": "Premium, trustworthy, calm, powerful, luxury security concierge."
+  },
+  "theme": "dark",
+  "archetype": "Archetype 5 (Jewel & Luxury) heavily blended with Secure/Performance characteristics.",
+  "design_system": {
+    "colors": {
+      "background": {
+        "primary": "#050507",
+        "secondary": "#0A0A0E",
+        "tertiary": "#12121A"
+      },
+      "surfaces": {
+        "glass_light": "rgba(255, 255, 255, 0.08)",
+        "glass_medium": "rgba(255, 255, 255, 0.12)",
+        "glass_heavy": "rgba(255, 255, 255, 0.16)",
+        "border": "rgba(255, 255, 255, 0.1)"
+      },
+      "brand": {
+        "primary": "#2DD4BF",
+        "emerald": "#10B981",
+        "teal": "#0F766E",
+        "navy": "#1E3A8A",
+        "apple_silver": "#F3F4F6",
+        "samsung_blue": "#3B82F6",
+        "warning": "#F59E0B",
+        "danger": "#EF4444"
+      },
+      "gradients": {
+        "aurora_accent": ["#1E3A8A", "#0F766E", "#10B981"],
+        "bridge_spectrum": ["#F3F4F6", "#3B82F6", "#2DD4BF"],
+        "vault_glow": ["rgba(45, 212, 191, 0.2)", "rgba(5, 5, 7, 0)"]
+      },
+      "text": {
+        "primary": "#FFFFFF",
+        "secondary": "#9CA3AF",
+        "tertiary": "#6B7280",
+        "inverse": "#050507"
+      }
+    },
+    "typography": {
+      "families": {
+        "heading": "Outfit",
+        "body": "Manrope"
+      },
+      "sizes": {
+        "h1": {
+          "fontSize": 40,
+          "lineHeight": 48,
+          "letterSpacing": -1.5,
+          "fontWeight": "700"
+        },
+        "h2": {
+          "fontSize": 32,
+          "lineHeight": 40,
+          "letterSpacing": -1,
+          "fontWeight": "600"
+        },
+        "h3": {
+          "fontSize": 24,
+          "lineHeight": 32,
+          "letterSpacing": -0.5,
+          "fontWeight": "600"
+        },
+        "h4": {
+          "fontSize": 20,
+          "lineHeight": 28,
+          "letterSpacing": -0.25,
+          "fontWeight": "500"
+        },
+        "bodyLarge": {
+          "fontSize": 18,
+          "lineHeight": 28,
+          "fontWeight": "400"
+        },
+        "body": {
+          "fontSize": 16,
+          "lineHeight": 24,
+          "fontWeight": "400"
+        },
+        "label": {
+          "fontSize": 14,
+          "lineHeight": 20,
+          "fontWeight": "500",
+          "textTransform": "uppercase",
+          "letterSpacing": 1.5
+        },
+        "caption": {
+          "fontSize": 12,
+          "lineHeight": 16,
+          "fontWeight": "400"
+        }
+      }
+    },
+    "spacing_and_layout": {
+      "grid": "8pt system",
+      "touch_targets": {
+        "minHeight": 44,
+        "minWidth": 44
+      },
+      "spacing": {
+        "xs": 4,
+        "sm": 8,
+        "md": 16,
+        "lg": 24,
+        "xl": 32,
+        "2xl": 48,
+        "3xl": 64
+      },
+      "radii": {
+        "sm": 8,
+        "md": 16,
+        "lg": 24,
+        "xl": 32,
+        "full": 9999
+      },
+      "wrappers": {
+        "screen": "SafeAreaView",
+        "keyboard": "KeyboardAvoidingView with behavior='padding'"
+      }
+    },
+    "components": {
+      "glass_card": {
+        "style": "Use Expo BlurView (tint='dark', intensity={40}). Fallback to rgba background with 1px border border_white/10.",
+        "padding": "lg (24px)",
+        "borderRadius": "lg (24px)"
+      },
+      "buttons": {
+        "primary": {
+          "background": "gradient from samsung_blue to brand_emerald",
+          "textColor": "text_primary",
+          "borderRadius": "full",
+          "minHeight": 56,
+          "fontWeight": "600",
+          "shadow": "subtle teal glow"
+        },
+        "secondary": {
+          "background": "glass_light",
+          "border": "1px solid border",
+          "textColor": "text_primary",
+          "borderRadius": "full",
+          "minHeight": 56
+        }
+      },
+      "icons": {
+        "library": "lucide-react-native",
+        "default_size": 24,
+        "active_color": "#2DD4BF",
+        "inactive_color": "#6B7280"
+      },
+      "activity_rings": {
+        "style": "Concentric SVG circles with rounded stroke caps. Use gradient strokes (e.g. Red/Orange for calories, Green for exercise, Blue for stand). Must be animated on mount."
+      },
+      "sparklines": {
+        "style": "Smooth bezier curves, thick strokes (3px), gradient fill below line. No axes, just pure data trajectory."
+      }
+    },
+    "motion": {
+      "page_transitions": "Fade and slight scale-in (0.95 -> 1.0) using React Native Reanimated.",
+      "glass_reveal": "Cards slide up with stagger effect and blur-in.",
+      "sync_animation": "Subtle pulsing opacity on watch icons while syncing."
+    }
+  },
+  "screens": {
+    "Onboarding": {
+      "layout": "Full-screen hero image overlay with heavy dark gradient at bottom. Value props in glass cards.",
+      "elements": ["Hero Image", "H1 Headline", "Pagination Dots", "Primary 'Get Started' Button"]
+    },
+    "Auth": {
+      "layout": "Centered form over abstract aurora background. KeyboardAvoidingView wrapper.",
+      "elements": ["Email/Password Inputs (Glass styling)", "Biometric Unlock Button", "Privacy Promise Label"]
+    },
+    "Dashboard": {
+      "layout": "ScrollView. Top section: Unified Activity Rings. Grid layout for metric cards.",
+      "elements": [
+        "Header with Profile and Sync Status",
+        "Unified Rings (Apple + Samsung merged data)",
+        "Metric Cards (Steps, HR, Sleep, Workouts, SpO2, ECG, Calories) - 2 columns",
+        "Platform Badges (Apple/Samsung icon on metrics)"
+      ]
+    },
+    "Watches_Connect": {
+      "layout": "Split layout or stack of two large premium cards.",
+      "elements": [
+        "Apple Watch Card (Silver/Dark theme, connected status)",
+        "Galaxy Watch Card (Blue/Dark theme, connected status)",
+        "One-tap connect buttons",
+        "Live status indicator"
+      ]
+    },
+    "Sync_Settings": {
+      "layout": "List view of toggles inside a glass container.",
+      "elements": [
+        "Per-metric bidirectional sync toggles",
+        "Conflict resolution policy selector (e.g., 'Apple Health wins' vs 'Latest entry wins')"
+      ]
+    },
+    "Activity_Audit_Log": {
+      "layout": "FlatList of recent sync events.",
+      "elements": ["Timestamped rows", "Metric icon", "Direction arrow (Apple -> Cloud)", "Value synced"]
+    },
+    "Vault": {
+      "layout": "Highly secure visual theme. Biometric gate overlay.",
+      "elements": [
+        "Fingerprint/FaceID prompt",
+        "E2E Encryption badge",
+        "Manual Import/Export (CSV/JSON/GPX) actions inside vault"
+      ]
+    },
+    "Settings": {
+      "layout": "Standard grouped list.",
+      "elements": ["Background Sync toggle", "Notifications", "Data Privacy controls", "Sign Out"]
+    }
+  },
+  "media_urls": {
+    "onboarding_hero": {
+      "url": "https://images.unsplash.com/photo-1629641538202-4bf2731a8656?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA3MDR8MHwxfHNlYXJjaHwxfHxzbWFydHdhdGNoJTIwZGFyayUyMHByZW1pdW18ZW58MHx8fHwxNzc4ODQ0Mjc1fDA&ixlib=rb-4.1.0&q=85",
+      "description": "Black Apple Watch with black sport band, perfect for the premium dark onboarding hero background."
+    },
+    "aurora_texture": {
+      "url": "https://images.unsplash.com/photo-1693590228850-53aa238cbe1c?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA5ODh8MHwxfHNlYXJjaHwzfHxhdXJvcmElMjBhYnN0cmFjdCUyMGRhcmslMjBiYWNrZ3JvdW5kfGVufDB8fHx8MTc3ODg0NDI3Nnww&ixlib=rb-4.1.0&q=85",
+      "description": "Dark blue and purple abstract wavy design for subtle background gradients and vault glow."
+    },
+    "vault_security": {
+      "url": "https://images.unsplash.com/photo-1585079374502-415f8516dcc3?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA3MDR8MHwxfHNlYXJjaHwxfHxmaW5nZXJwcmludCUyMHNlY3VyaXR5JTIwZGFya3xlbnwwfHx8fDE3Nzg4NDQyNzV8MA&ixlib=rb-4.1.0&q=85",
+      "description": "Round black and white light resembling a fingerprint/security scanner for the Vault Biometric screen."
+    }
+  },
+  "testing": {
+    "guidelines": "All interactive and key informational elements MUST include a data-testid attribute in kebab-case."
+  }
+}

@@ -1,0 +1,86 @@
+{
+  "expo": {
+    "name": "HealthBridge Vault",
+    "slug": "healthbridge-vault",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "healthbridge",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.healthbridge.vault",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Unlock your encrypted HealthBridge Vault.",
+        "NSHealthShareUsageDescription": "Bridge Apple Health data across watches.",
+        "NSHealthUpdateUsageDescription": "Save bridged data to Apple Health.",
+        "NSBluetoothAlwaysUsageDescription": "Connect to your watch over Bluetooth.",
+        "NSBluetoothPeripheralUsageDescription": "Pair with your watch over Bluetooth.",
+        "NSUserNotificationsUsageDescription": "Mirror notifications to your watch.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "app.healthbridge.vault",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#050507"
+      },
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT",
+        "POST_NOTIFICATIONS",
+        "android.permission.health.READ_STEPS",
+        "android.permission.health.WRITE_STEPS",
+        "android.permission.health.READ_HEART_RATE",
+        "android.permission.health.WRITE_HEART_RATE",
+        "android.permission.health.READ_SLEEP",
+        "android.permission.health.WRITE_SLEEP",
+        "android.permission.health.READ_OXYGEN_SATURATION",
+        "android.permission.health.READ_EXERCISE",
+        "android.permission.health.WRITE_EXERCISE",
+        "android.permission.health.READ_TOTAL_CALORIES_BURNED",
+        "android.permission.BODY_SENSORS"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#050507"
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Unlock your encrypted HealthBridge Vault."
+        }
+      ],
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#2DD4BF"
+        }
+      ],
+      "expo-web-browser"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
