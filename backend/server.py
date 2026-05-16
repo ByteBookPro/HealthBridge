@@ -443,6 +443,11 @@ async def seed_user_data(user_id: str) -> None:
     await db.sync_prefs.insert_many(prefs)
     await db.conflict_policy.insert_one({"user_id": user_id, "policy": "latest_wins",
                                           "background_sync": True, "notifications": True})
+    # Seed disconnected connectors (Phase C — user connects them explicitly)
+    await db.connectors.insert_many([
+        {**c, "user_id": user_id, "connected": False, "last_sync_at": None}
+        for c in CONNECTOR_TEMPLATE
+    ])
     now = datetime.now(timezone.utc)
     pairs = [("apple", "samsung"), ("samsung", "apple"), ("apple", "cloud"), ("samsung", "cloud")]
     events = []
@@ -1038,6 +1043,241 @@ async def get_available_platforms():
                 "ECG data cannot be written to Health Connect (read-only)",
             ],
         },
+    }
+
+
+# ---------- Connectors (Phase C) ----------
+CONNECTOR_TEMPLATE: List[dict] = [
+    {
+        "connector_id": "apple_health", "name": "Apple Health", "icon": "logo-apple",
+        "color": "#F3F4F6", "platforms": ["ios"],
+        "metrics_provided": ["steps", "heart_rate", "sleep", "calories", "workouts", "vo2_max", "hrv", "spo2", "ecg", "distance", "active_minutes", "floors", "stand", "resting_hr", "respiratory_rate"],
+    },
+    {
+        "connector_id": "google_fit", "name": "Google Fit", "icon": "logo-google",
+        "color": "#EA4335", "platforms": ["android"],
+        "metrics_provided": ["steps", "heart_rate", "sleep", "calories", "distance", "active_minutes", "workouts"],
+    },
+    {
+        "connector_id": "samsung_health", "name": "Samsung Health", "icon": "phone-portrait-outline",
+        "color": "#3B82F6", "platforms": ["android"],
+        "metrics_provided": ["steps", "heart_rate", "sleep", "calories", "stress", "blood_pressure_sys", "blood_pressure_dia", "spo2", "workouts", "distance"],
+    },
+    {
+        "connector_id": "fitbit", "name": "Fitbit", "icon": "fitness-outline",
+        "color": "#00B0B9", "platforms": ["ios", "android"],
+        "metrics_provided": ["steps", "heart_rate", "sleep", "calories", "active_minutes", "floors", "distance", "resting_hr"],
+    },
+    {
+        "connector_id": "garmin", "name": "Garmin Connect", "icon": "navigate-outline",
+        "color": "#007DC3", "platforms": ["ios", "android"],
+        "metrics_provided": ["steps", "heart_rate", "sleep", "calories", "vo2_max", "training_load", "recovery_time", "stress", "workouts", "hrv"],
+    },
+    {
+        "connector_id": "myfitnesspal", "name": "MyFitnessPal", "icon": "restaurant-outline",
+        "color": "#0073CF", "platforms": ["ios", "android"],
+        "metrics_provided": ["calorie_intake", "protein", "carbs", "fat", "fiber", "water"],
+    },
+    {
+        "connector_id": "strava", "name": "Strava", "icon": "bicycle-outline",
+        "color": "#FC4C02", "platforms": ["ios", "android"],
+        "metrics_provided": ["workouts", "distance", "calories", "heart_rate", "vo2_max"],
+    },
+    {
+        "connector_id": "oura", "name": "Oura Ring", "icon": "ellipse-outline",
+        "color": "#D4AF37", "platforms": ["ios", "android"],
+        "metrics_provided": ["sleep", "sleep_quality", "hrv", "resting_hr", "body_temp", "respiratory_rate"],
+    },
+    {
+        "connector_id": "withings", "name": "Withings Health Mate", "icon": "scale-outline",
+        "color": "#00A0E0", "platforms": ["ios", "android"],
+        "metrics_provided": ["weight", "bmi", "body_fat", "muscle_mass", "blood_pressure_sys", "blood_pressure_dia"],
+    },
+]
+
+
+class ConnectorOut(BaseModel):
+    connector_id: str
+    name: str
+    icon: str
+    color: str
+    platforms: List[str]
+    metrics_provided: List[str]
+    connected: bool = False
+    last_sync_at: Optional[datetime] = None
+
+
+class PrimarySourceIn(BaseModel):
+    metric: str
+    connector_id: str
+
+
+async def ensure_connectors_seeded(user_id: str) -> None:
+    """Seed default disconnected connectors for the user if none exist."""
+    existing = await db.connectors.count_documents({"user_id": user_id})
+    if existing > 0:
+        return
+    docs = []
+    for c in CONNECTOR_TEMPLATE:
+        docs.append({
+            **c, "user_id": user_id, "connected": False, "last_sync_at": None,
+        })
+    if docs:
+        await db.connectors.insert_many(docs)
+
+
+@api.get("/connectors", response_model=List[ConnectorOut])
+async def list_connectors(user=Depends(current_user)):
+    await ensure_connectors_seeded(user["id"])
+    docs = await db.connectors.find(
+        {"user_id": user["id"]}, {"_id": 0, "user_id": 0}
+    ).to_list(50)
+    order = {c["connector_id"]: i for i, c in enumerate(CONNECTOR_TEMPLATE)}
+    docs.sort(key=lambda d: order.get(d["connector_id"], 99))
+    return docs
+
+
+@api.post("/connectors/{connector_id}/connect", response_model=ConnectorOut)
+async def connect_connector(connector_id: str, user=Depends(current_user)):
+    await ensure_connectors_seeded(user["id"])
+    now = datetime.now(timezone.utc)
+    res = await db.connectors.update_one(
+        {"user_id": user["id"], "connector_id": connector_id},
+        {"$set": {"connected": True, "last_sync_at": now}},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(404, "Connector not found")
+    # Auto-set as primary for any metric that currently has no primary
+    conn = await db.connectors.find_one(
+        {"user_id": user["id"], "connector_id": connector_id}, {"_id": 0, "user_id": 0}
+    )
+    for metric in conn.get("metrics_provided", []):
+        existing = await db.metric_primary.find_one({"user_id": user["id"], "metric": metric})
+        if not existing:
+            await db.metric_primary.insert_one({
+                "user_id": user["id"], "metric": metric, "connector_id": connector_id,
+                "updated_at": now,
+            })
+    return conn
+
+
+@api.post("/connectors/{connector_id}/disconnect", response_model=ConnectorOut)
+async def disconnect_connector(connector_id: str, user=Depends(current_user)):
+    await ensure_connectors_seeded(user["id"])
+    res = await db.connectors.update_one(
+        {"user_id": user["id"], "connector_id": connector_id},
+        {"$set": {"connected": False}},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(404, "Connector not found")
+    # Remove primary assignments for this connector — reassign to any other connected provider
+    primaries = await db.metric_primary.find(
+        {"user_id": user["id"], "connector_id": connector_id}
+    ).to_list(100)
+    for p in primaries:
+        # Find another connected connector that provides this metric
+        alt = await db.connectors.find_one({
+            "user_id": user["id"], "connected": True,
+            "metrics_provided": p["metric"],
+            "connector_id": {"$ne": connector_id},
+        }, {"_id": 0})
+        if alt:
+            await db.metric_primary.update_one(
+                {"user_id": user["id"], "metric": p["metric"]},
+                {"$set": {"connector_id": alt["connector_id"],
+                          "updated_at": datetime.now(timezone.utc)}},
+            )
+        else:
+            await db.metric_primary.delete_one(
+                {"user_id": user["id"], "metric": p["metric"]}
+            )
+    conn = await db.connectors.find_one(
+        {"user_id": user["id"], "connector_id": connector_id}, {"_id": 0, "user_id": 0}
+    )
+    return conn
+
+
+@api.get("/metrics/availability")
+async def metrics_availability(user=Depends(current_user)):
+    """Returns availability map per metric — which connectors provide it,
+    whether at least one is connected (so the metric can be enabled), and the
+    user-chosen primary connector for that metric.
+
+    Dashboard & customize-metrics use this to gate the enable toggle. Until a
+    relevant connector is connected, the metric is not available.
+    """
+    await ensure_connectors_seeded(user["id"])
+    connectors = await db.connectors.find(
+        {"user_id": user["id"]}, {"_id": 0, "user_id": 0}
+    ).to_list(50)
+    primaries = await db.metric_primary.find(
+        {"user_id": user["id"]}, {"_id": 0, "user_id": 0}
+    ).to_list(200)
+    primary_by_metric = {p["metric"]: p["connector_id"] for p in primaries}
+
+    # Collect all metric ids from the metric template
+    all_metrics: set = set()
+    for c in CONNECTOR_TEMPLATE:
+        for m in c["metrics_provided"]:
+            all_metrics.add(m)
+    for m in DEFAULT_METRICS_TEMPLATE:
+        all_metrics.add(m["metric"])
+
+    out = {}
+    for metric in all_metrics:
+        all_providers = [c["connector_id"] for c in connectors if metric in c.get("metrics_provided", [])]
+        connected_providers = [c["connector_id"] for c in connectors
+                               if metric in c.get("metrics_provided", []) and c.get("connected")]
+        out[metric] = {
+            "providers": all_providers,
+            "connected_providers": connected_providers,
+            "available": len(connected_providers) > 0,
+            "primary": primary_by_metric.get(metric),
+        }
+    return {"metrics": out, "total_connected": sum(1 for c in connectors if c.get("connected"))}
+
+
+@api.post("/connectors/primary")
+async def set_primary_source(payload: PrimarySourceIn, user=Depends(current_user)):
+    """Set the primary connector for a metric. The connector must be connected
+    and must provide that metric."""
+    conn = await db.connectors.find_one({
+        "user_id": user["id"], "connector_id": payload.connector_id,
+    }, {"_id": 0})
+    if not conn:
+        raise HTTPException(404, "Connector not found")
+    if not conn.get("connected"):
+        raise HTTPException(400, "Connector is not connected")
+    if payload.metric not in conn.get("metrics_provided", []):
+        raise HTTPException(400, f"{conn['name']} does not provide this metric")
+    now = datetime.now(timezone.utc)
+    await db.metric_primary.update_one(
+        {"user_id": user["id"], "metric": payload.metric},
+        {"$set": {"connector_id": payload.connector_id, "updated_at": now}},
+        upsert=True,
+    )
+    return {"ok": True, "metric": payload.metric, "connector_id": payload.connector_id}
+
+
+# ---------- Watch proximity (Phase C) ----------
+@api.post("/watches/{watch_id}/proximity")
+async def watch_proximity(watch_id: str, user=Depends(current_user)):
+    """Simulate a Bluetooth proximity scan for a watch. In a native build this
+    would use CoreBluetooth / Android BLE RSSI. Here we return a randomized but
+    plausible reading. Used by the connect flow to gate the action."""
+    w = await db.watches.find_one({"id": watch_id, "user_id": user["id"]}, {"_id": 0})
+    if not w:
+        raise HTTPException(404, "Watch not found")
+    # 80% chance the watch is "in range" in the simulated scan
+    in_range = random.random() < 0.8
+    rssi = random.randint(-55, -35) if in_range else random.randint(-95, -75)
+    distance_m = round(max(0.2, (abs(rssi) - 30) / 10.0), 1)
+    return {
+        "watch_id": watch_id,
+        "in_range": in_range,
+        "rssi": rssi,
+        "distance_m": distance_m,
+        "scanned_at": datetime.now(timezone.utc),
     }
 
 

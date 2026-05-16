@@ -3,13 +3,13 @@ import { View, StyleSheet, ScrollView, Pressable, Switch, ActivityIndicator } fr
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { theme } from '@/src/theme/theme';
 import AppText from '@/src/components/AppText';
 import GlassCard from '@/src/components/GlassCard';
 import AuroraBackground from '@/src/components/AuroraBackground';
-import { api, type MetricSummary } from '@/src/api/client';
+import { api, type MetricSummary, type ConnectorOut, type MetricAvailabilityResponse } from '@/src/api/client';
 
 const STORAGE_KEY = '@healthbridge_hidden_metrics';
 
@@ -65,14 +65,21 @@ export default function CustomizeMetricsScreen() {
   const [hiddenMetrics, setHiddenMetrics] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [availability, setAvailability] = useState<MetricAvailabilityResponse | null>(null);
+  const [connectors, setConnectors] = useState<ConnectorOut[]>([]);
+  const [pickerMetric, setPickerMetric] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [data, stored] = await Promise.all([
+      const [data, stored, avail, conns] = await Promise.all([
         api.metricsAll(),
         AsyncStorage.getItem(STORAGE_KEY),
+        api.metricAvailability().catch(() => null),
+        api.connectors().catch(() => [] as ConnectorOut[]),
       ]);
       setMetrics(data);
+      if (avail) setAvailability(avail);
+      setConnectors(conns);
       if (stored) {
         setHiddenMetrics(new Set(JSON.parse(stored)));
       }
@@ -85,7 +92,36 @@ export default function CustomizeMetricsScreen() {
 
   useEffect(() => { load(); }, [load]);
 
+  const isAvailable = (metricId: string): boolean => {
+    if (!availability) return true; // before load, assume all available
+    return availability.metrics?.[metricId]?.available === true;
+  };
+
+  const primaryFor = (metricId: string): string | null => {
+    return availability?.metrics?.[metricId]?.primary ?? null;
+  };
+
+  const connectedProvidersFor = (metricId: string): ConnectorOut[] => {
+    const ids = availability?.metrics?.[metricId]?.connected_providers || [];
+    return connectors.filter((c) => ids.includes(c.connector_id));
+  };
+
+  const setPrimary = async (metricId: string, connectorId: string) => {
+    try {
+      await api.setPrimarySource(metricId, connectorId);
+      const next = await api.metricAvailability();
+      setAvailability(next);
+    } catch {}
+    setPickerMetric(null);
+  };
+
   const toggleMetric = async (metricId: string) => {
+    // Gate: can't enable a metric that has no active provider
+    if (!isAvailable(metricId) && hiddenMetrics.has(metricId)) {
+      // attempting to enable an unavailable metric — route to connectors
+      router.push('/app-connectors');
+      return;
+    }
     setSaving(true);
     const newHidden = new Set(hiddenMetrics);
     if (newHidden.has(metricId)) {
@@ -94,7 +130,7 @@ export default function CustomizeMetricsScreen() {
       newHidden.add(metricId);
     }
     setHiddenMetrics(newHidden);
-    
+
     try {
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([...newHidden]));
     } catch (e) {
@@ -207,7 +243,7 @@ export default function CustomizeMetricsScreen() {
               <View style={styles.infoRow}>
                 <Ionicons name="information-circle" size={18} color={theme.colors.teal} />
                 <AppText size={12} color={theme.colors.textDim} style={{ flex: 1, marginLeft: 10 }}>
-                  Toggle metrics on/off to customize your dashboard. Hidden metrics can still be viewed in the metric detail page.
+                  Toggle metrics on/off to customize your dashboard. A metric can only be enabled once a connected app starts providing its data.
                 </AppText>
               </View>
             </GlassCard>
@@ -249,46 +285,124 @@ export default function CustomizeMetricsScreen() {
                   <View style={styles.metricsContainer}>
                     {catMetrics.map((m, idx) => {
                       const isHidden = hiddenMetrics.has(m.metric);
+                      const available = isAvailable(m.metric);
+                      const isLocked = !available;
+                      const providers = connectedProvidersFor(m.metric);
+                      const primary = primaryFor(m.metric);
+                      const primaryConn = primary ? connectors.find((c) => c.connector_id === primary) : null;
                       return (
-                        <Pressable
-                          key={m.metric}
-                          onPress={() => toggleMetric(m.metric)}
-                          style={[
-                            styles.metricRow,
-                            idx < catMetrics.length - 1 && styles.metricDivider,
-                            isHidden && styles.metricHidden,
-                          ]}
-                        >
-                          <View style={[styles.metricIcon, { backgroundColor: `${catInfo.color}12` }]}>
-                            <Ionicons
-                              name={METRIC_ICONS[m.metric] || 'analytics-outline'}
-                              size={14}
-                              color={isHidden ? theme.colors.textMute : catInfo.color}
-                            />
-                          </View>
-                          <View style={{ flex: 1, marginLeft: 10 }}>
-                            <AppText
-                              weight="med"
-                              size={13}
-                              color={isHidden ? theme.colors.textMute : theme.colors.text}
-                            >
-                              {m.label}
-                            </AppText>
-                            <AppText size={10} color={theme.colors.textDim}>
-                              {m.current} {m.unit}
-                            </AppText>
-                          </View>
-                          <View style={[
-                            styles.toggleIndicator,
-                            isHidden ? styles.toggleOff : styles.toggleOn,
-                          ]}>
-                            <Ionicons
-                              name={isHidden ? 'eye-off' : 'eye'}
-                              size={12}
-                              color={isHidden ? theme.colors.textMute : theme.colors.emerald}
-                            />
-                          </View>
-                        </Pressable>
+                        <View key={m.metric}>
+                          <Pressable
+                            onPress={() => toggleMetric(m.metric)}
+                            style={[
+                              styles.metricRow,
+                              idx < catMetrics.length - 1 && styles.metricDivider,
+                              (isHidden || isLocked) && styles.metricHidden,
+                            ]}
+                            testID={`metric-toggle-${m.metric}`}
+                          >
+                            <View style={[styles.metricIcon, { backgroundColor: `${catInfo.color}12` }]}>
+                              <Ionicons
+                                name={METRIC_ICONS[m.metric] || 'analytics-outline'}
+                                size={14}
+                                color={isHidden || isLocked ? theme.colors.textMute : catInfo.color}
+                              />
+                            </View>
+                            <View style={{ flex: 1, marginLeft: 10 }}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
+                                <AppText
+                                  weight="med"
+                                  size={13}
+                                  color={isHidden || isLocked ? theme.colors.textMute : theme.colors.text}
+                                >
+                                  {m.label}
+                                </AppText>
+                                {isLocked && (
+                                  <View style={styles.lockedChip} testID={`metric-locked-${m.metric}`}>
+                                    <Ionicons name="lock-closed" size={9} color={theme.colors.textMute} />
+                                    <AppText size={9} color={theme.colors.textMute} style={{ marginLeft: 3 }}>
+                                      No data source
+                                    </AppText>
+                                  </View>
+                                )}
+                              </View>
+                              <AppText size={10} color={theme.colors.textDim}>
+                                {isLocked
+                                  ? 'Connect an app to enable'
+                                  : `${m.current} ${m.unit}`}
+                              </AppText>
+                            </View>
+                            {isLocked ? (
+                              <Pressable
+                                onPress={() => router.push('/app-connectors')}
+                                style={styles.connectInlineBtn}
+                                hitSlop={6}
+                                testID={`metric-connect-cta-${m.metric}`}
+                              >
+                                <Ionicons name="link" size={10} color={theme.colors.teal} />
+                                <AppText size={9} color={theme.colors.teal} weight="semi" style={{ marginLeft: 3 }}>
+                                  Connect
+                                </AppText>
+                              </Pressable>
+                            ) : (
+                              <View style={[
+                                styles.toggleIndicator,
+                                isHidden ? styles.toggleOff : styles.toggleOn,
+                              ]}>
+                                <Ionicons
+                                  name={isHidden ? 'eye-off' : 'eye'}
+                                  size={12}
+                                  color={isHidden ? theme.colors.textMute : theme.colors.emerald}
+                                />
+                              </View>
+                            )}
+                          </Pressable>
+
+                          {/* Primary source picker — only when multiple connected providers */}
+                          {!isLocked && providers.length > 1 && (
+                            <View style={styles.sourceRow}>
+                              <AppText size={9} color={theme.colors.textMute} style={{ marginRight: 6 }}>
+                                Primary source:
+                              </AppText>
+                              <Pressable
+                                onPress={() => setPickerMetric(pickerMetric === m.metric ? null : m.metric)}
+                                style={styles.sourceChip}
+                                testID={`metric-primary-${m.metric}`}
+                              >
+                                <AppText size={9} weight="semi" color={primaryConn?.color || theme.colors.teal}>
+                                  {primaryConn?.name || 'Auto'}
+                                </AppText>
+                                <Ionicons
+                                  name={pickerMetric === m.metric ? 'chevron-up' : 'chevron-down'}
+                                  size={10} color={theme.colors.textDim} style={{ marginLeft: 4 }}
+                                />
+                              </Pressable>
+                            </View>
+                          )}
+                          {!isLocked && pickerMetric === m.metric && (
+                            <View style={styles.sourcePicker} testID={`metric-source-picker-${m.metric}`}>
+                              {providers.map((p) => (
+                                <Pressable
+                                  key={p.connector_id}
+                                  onPress={() => setPrimary(m.metric, p.connector_id)}
+                                  style={[
+                                    styles.sourcePickerItem,
+                                    primary === p.connector_id && { backgroundColor: `${p.color}18`, borderColor: `${p.color}55` },
+                                  ]}
+                                  testID={`metric-source-option-${m.metric}-${p.connector_id}`}
+                                >
+                                  <Ionicons name={p.icon as any} size={12} color={p.color} />
+                                  <AppText size={10} color={theme.colors.text} style={{ marginLeft: 6 }}>
+                                    {p.name}
+                                  </AppText>
+                                  {primary === p.connector_id && (
+                                    <Ionicons name="checkmark" size={12} color={theme.colors.emerald} style={{ marginLeft: 'auto' }} />
+                                  )}
+                                </Pressable>
+                              ))}
+                            </View>
+                          )}
+                        </View>
                       );
                     })}
                   </View>
@@ -402,5 +516,45 @@ const styles = StyleSheet.create({
   },
   toggleOff: {
     backgroundColor: 'rgba(255,255,255,0.05)',
+  },
+  lockedChip: {
+    flexDirection: 'row', alignItems: 'center',
+    marginLeft: 8, paddingHorizontal: 6, paddingVertical: 2,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1, borderColor: theme.colors.border,
+  },
+  connectInlineBtn: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 10, paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(45,212,191,0.14)',
+    borderWidth: 1, borderColor: 'rgba(45,212,191,0.3)',
+  },
+  sourceRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: theme.space.md + 38, // align after metric icon
+    paddingBottom: 8, marginTop: -4,
+  },
+  sourceChip: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 8, paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1, borderColor: theme.colors.border,
+  },
+  sourcePicker: {
+    marginHorizontal: theme.space.md,
+    marginBottom: 8,
+    padding: 6, borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    borderWidth: 1, borderColor: theme.colors.border,
+    gap: 2,
+  },
+  sourcePickerItem: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 10, paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1, borderColor: 'transparent',
   },
 });

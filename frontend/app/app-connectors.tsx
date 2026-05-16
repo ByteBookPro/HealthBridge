@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, Pressable, Alert, Linking, Platform } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, StyleSheet, ScrollView, Pressable, Alert, Linking, Platform, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -8,15 +8,10 @@ import { theme } from '@/src/theme/theme';
 import AppText from '@/src/components/AppText';
 import GlassCard from '@/src/components/GlassCard';
 import AuroraBackground from '@/src/components/AuroraBackground';
+import SyncingOverlay from '@/src/components/SyncingOverlay';
+import { api, type ConnectorOut } from '@/src/api/client';
 
-type AppConnector = {
-  id: string;
-  name: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  color: string;
-  platforms: ('ios' | 'android' | 'web')[];
-  connected: boolean;
-  metricsEnabled: string[];
+type AppConnector = ConnectorOut & {
   description: string;
   setupSteps: string[];
   appStoreUrl?: string;
@@ -24,15 +19,15 @@ type AppConnector = {
   limitations?: string;
 };
 
-const APP_CONNECTORS: AppConnector[] = [
-  {
-    id: 'apple_health',
-    name: 'Apple Health',
-    icon: 'logo-apple',
-    color: '#F3F4F6',
-    platforms: ['ios'],
-    connected: false,
-    metricsEnabled: ['steps', 'heart_rate', 'sleep', 'calories', 'workouts', 'vo2_max', 'hrv', 'spo2', 'ecg'],
+// Static metadata layered on top of the live backend connector list
+const CONNECTOR_META: Record<string, {
+  description: string;
+  setupSteps: string[];
+  appStoreUrl?: string;
+  playStoreUrl?: string;
+  limitations?: string;
+}> = {
+  apple_health: {
     description: 'Sync all health data from Apple Health including data from connected apps like MyFitnessPal, Strava, etc.',
     setupSteps: [
       'Tap "Connect" below',
@@ -42,14 +37,7 @@ const APP_CONNECTORS: AppConnector[] = [
     ],
     limitations: 'Only available on iOS devices',
   },
-  {
-    id: 'google_fit',
-    name: 'Google Fit',
-    icon: 'logo-google',
-    color: '#EA4335',
-    platforms: ['android'],
-    connected: false,
-    metricsEnabled: ['steps', 'heart_rate', 'sleep', 'calories', 'distance', 'active_minutes'],
+  google_fit: {
     description: 'Connect with Google Fit to sync fitness and health data from your Android device and connected apps.',
     setupSteps: [
       'Install Google Fit app if not installed',
@@ -60,14 +48,7 @@ const APP_CONNECTORS: AppConnector[] = [
     playStoreUrl: 'https://play.google.com/store/apps/details?id=com.google.android.apps.fitness',
     limitations: 'Only available on Android devices',
   },
-  {
-    id: 'samsung_health',
-    name: 'Samsung Health',
-    icon: 'phone-portrait-outline',
-    color: '#3B82F6',
-    platforms: ['android'],
-    connected: false,
-    metricsEnabled: ['steps', 'heart_rate', 'sleep', 'calories', 'stress', 'blood_pressure_sys', 'blood_pressure_dia', 'spo2'],
+  samsung_health: {
     description: 'Sync data from Samsung Health including Galaxy Watch metrics and body composition data.',
     setupSteps: [
       'Open Samsung Health app',
@@ -78,14 +59,7 @@ const APP_CONNECTORS: AppConnector[] = [
     playStoreUrl: 'https://play.google.com/store/apps/details?id=com.sec.android.app.shealth',
     limitations: 'Requires Samsung Health app and Health Connect on Android',
   },
-  {
-    id: 'fitbit',
-    name: 'Fitbit',
-    icon: 'fitness-outline',
-    color: '#00B0B9',
-    platforms: ['ios', 'android'],
-    connected: false,
-    metricsEnabled: ['steps', 'heart_rate', 'sleep', 'calories', 'active_minutes', 'floors', 'distance'],
+  fitbit: {
     description: 'Connect your Fitbit account to sync data from Fitbit trackers and smartwatches.',
     setupSteps: [
       'Ensure Fitbit app is installed and signed in',
@@ -96,14 +70,7 @@ const APP_CONNECTORS: AppConnector[] = [
     appStoreUrl: 'https://apps.apple.com/app/fitbit-health-fitness/id462638897',
     playStoreUrl: 'https://play.google.com/store/apps/details?id=com.fitbit.FitbitMobile',
   },
-  {
-    id: 'garmin',
-    name: 'Garmin Connect',
-    icon: 'navigate-outline',
-    color: '#007DC3',
-    platforms: ['ios', 'android'],
-    connected: false,
-    metricsEnabled: ['steps', 'heart_rate', 'sleep', 'calories', 'vo2_max', 'training_load', 'recovery_time', 'stress'],
+  garmin: {
     description: 'Sync data from Garmin devices including advanced training metrics and body battery.',
     setupSteps: [
       'Install Garmin Connect app',
@@ -114,14 +81,7 @@ const APP_CONNECTORS: AppConnector[] = [
     appStoreUrl: 'https://apps.apple.com/app/garmin-connect/id583446403',
     playStoreUrl: 'https://play.google.com/store/apps/details?id=com.garmin.android.apps.connectmobile',
   },
-  {
-    id: 'myfitnesspal',
-    name: 'MyFitnessPal',
-    icon: 'restaurant-outline',
-    color: '#0073CF',
-    platforms: ['ios', 'android'],
-    connected: false,
-    metricsEnabled: ['calorie_intake', 'protein', 'carbs', 'fat', 'fiber', 'water'],
+  myfitnesspal: {
     description: 'Sync nutrition data including calorie intake and macronutrients from MyFitnessPal.',
     setupSteps: [
       'Install MyFitnessPal app',
@@ -132,14 +92,7 @@ const APP_CONNECTORS: AppConnector[] = [
     playStoreUrl: 'https://play.google.com/store/apps/details?id=com.myfitnesspal.android',
     limitations: 'Syncs via Apple Health/Google Fit integration',
   },
-  {
-    id: 'strava',
-    name: 'Strava',
-    icon: 'bicycle-outline',
-    color: '#FC4C02',
-    platforms: ['ios', 'android'],
-    connected: false,
-    metricsEnabled: ['workouts', 'distance', 'calories', 'heart_rate', 'vo2_max'],
+  strava: {
     description: 'Import workout data from Strava including runs, rides, and other activities.',
     setupSteps: [
       'Install Strava app',
@@ -150,14 +103,7 @@ const APP_CONNECTORS: AppConnector[] = [
     playStoreUrl: 'https://play.google.com/store/apps/details?id=com.strava',
     limitations: 'Syncs via Apple Health/Google Fit integration',
   },
-  {
-    id: 'oura',
-    name: 'Oura Ring',
-    icon: 'ellipse-outline',
-    color: '#D4AF37',
-    platforms: ['ios', 'android'],
-    connected: false,
-    metricsEnabled: ['sleep', 'sleep_quality', 'hrv', 'resting_hr', 'body_temp', 'respiratory_rate'],
+  oura: {
     description: 'Sync detailed sleep and recovery data from your Oura Ring.',
     setupSteps: [
       'Install Oura app',
@@ -168,14 +114,7 @@ const APP_CONNECTORS: AppConnector[] = [
     playStoreUrl: 'https://play.google.com/store/apps/details?id=com.ouraring.oura',
     limitations: 'Syncs via Apple Health/Google Fit integration',
   },
-  {
-    id: 'withings',
-    name: 'Withings Health Mate',
-    icon: 'scale-outline',
-    color: '#00A0E0',
-    platforms: ['ios', 'android'],
-    connected: false,
-    metricsEnabled: ['weight', 'bmi', 'body_fat', 'muscle_mass', 'blood_pressure_sys', 'blood_pressure_dia'],
+  withings: {
     description: 'Sync body composition and blood pressure data from Withings devices.',
     setupSteps: [
       'Install Withings Health Mate app',
@@ -185,38 +124,74 @@ const APP_CONNECTORS: AppConnector[] = [
     appStoreUrl: 'https://apps.apple.com/app/withings-health-mate/id542701020',
     playStoreUrl: 'https://play.google.com/store/apps/details?id=com.withings.wiscale2',
   },
-];
+};
 
 export default function AppConnectorsScreen() {
   const router = useRouter();
-  const [connectors, setConnectors] = useState(APP_CONNECTORS);
+  const [connectors, setConnectors] = useState<AppConnector[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const currentPlatform = Platform.OS as 'ios' | 'android' | 'web';
 
+  const load = useCallback(async () => {
+    try {
+      const data = await api.connectors();
+      setConnectors(data.map((c) => ({
+        ...c,
+        description: CONNECTOR_META[c.connector_id]?.description || '',
+        setupSteps: CONNECTOR_META[c.connector_id]?.setupSteps || [],
+        appStoreUrl: CONNECTOR_META[c.connector_id]?.appStoreUrl,
+        playStoreUrl: CONNECTOR_META[c.connector_id]?.playStoreUrl,
+        limitations: CONNECTOR_META[c.connector_id]?.limitations,
+      })));
+    } catch (e) {
+      console.warn('Failed to load connectors:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
   const handleConnect = async (connector: AppConnector) => {
-    if (!connector.platforms.includes(currentPlatform) && currentPlatform !== 'web') {
+    const available = connector.platforms.includes(currentPlatform) || currentPlatform === 'web';
+    if (!available) {
       Alert.alert(
         'Not Available',
         connector.limitations || `${connector.name} is not available on this platform.`,
-        [{ text: 'OK' }]
+        [{ text: 'OK' }],
       );
       return;
     }
-
-    // For demo purposes, toggle connection status
-    setConnectors(prev =>
-      prev.map(c =>
-        c.id === connector.id ? { ...c, connected: !c.connected } : c
-      )
-    );
-
-    if (!connector.connected) {
-      Alert.alert(
-        'Connected!',
-        `${connector.name} has been connected. ${connector.metricsEnabled.length} metrics will now sync automatically.`,
-        [{ text: 'Great!' }]
-      );
+    setBusyId(connector.connector_id);
+    try {
+      if (connector.connected) {
+        const updated = await api.disconnectConnector(connector.connector_id);
+        setConnectors((prev) => prev.map((c) =>
+          c.connector_id === connector.connector_id ? { ...c, ...updated } : c
+        ));
+      } else {
+        // Show syncing animation while the connector initializes
+        setSyncing(true);
+        const [updated] = await Promise.all([
+          api.connectConnector(connector.connector_id),
+          // Trigger an initial sync so the dashboard immediately reflects data
+          api.syncNow().catch(() => null),
+          new Promise((res) => setTimeout(res, 1400)),
+        ]);
+        setConnectors((prev) => prev.map((c) =>
+          c.connector_id === connector.connector_id ? { ...c, ...updated } : c
+        ));
+        setSyncing(false);
+      }
+    } catch (e: any) {
+      Alert.alert('Connection failed', e?.message || 'Could not update connector. Try again.');
+    } finally {
+      setBusyId(null);
+      setSyncing(false);
     }
   };
 
@@ -235,6 +210,8 @@ export default function AppConnectorsScreen() {
     return connector.platforms.includes(currentPlatform) || currentPlatform === 'web';
   };
 
+  const totalConnected = connectors.filter((c) => c.connected).length;
+
   return (
     <View style={styles.root}>
       <AuroraBackground />
@@ -251,29 +228,40 @@ export default function AppConnectorsScreen() {
         </View>
 
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-          {/* Info Card */}
-          <Animated.View entering={FadeInDown.duration(400)}>
-            <GlassCard style={styles.infoCard}>
-              <View style={styles.infoRow}>
-                <Ionicons name="information-circle" size={20} color={theme.colors.teal} />
-                <AppText size={12} color={theme.colors.textDim} style={{ flex: 1, marginLeft: 10 }}>
-                  Connect your health apps to unlock more metrics. Data syncs automatically through Apple Health (iOS) or Health Connect (Android).
-                </AppText>
-              </View>
-            </GlassCard>
-          </Animated.View>
+          {loading && (
+            <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+              <ActivityIndicator size="small" color={theme.colors.teal} />
+            </View>
+          )}
+
+          {/* Stats banner */}
+          {!loading && (
+            <Animated.View entering={FadeInDown.duration(400)}>
+              <GlassCard style={styles.infoCard} testID="connectors-summary">
+                <View style={styles.infoRow}>
+                  <View style={[styles.summaryDot, { backgroundColor: totalConnected > 0 ? theme.colors.emerald : theme.colors.textMute }]} />
+                  <AppText size={12} color={theme.colors.textDim} style={{ flex: 1, marginLeft: 10 }}>
+                    {totalConnected === 0
+                      ? 'No data sources connected — metrics on your dashboard stay locked until at least one app starts syncing.'
+                      : `${totalConnected} ${totalConnected === 1 ? 'source' : 'sources'} connected — metrics unlock automatically as data flows in.`}
+                  </AppText>
+                </View>
+              </GlassCard>
+            </Animated.View>
+          )}
 
           {/* Primary Connectors */}
           <AppText size={11} color={theme.colors.textDim} weight="med" style={styles.sectionLabel}>
             PRIMARY HEALTH PLATFORMS
           </AppText>
-          {connectors.filter(c => ['apple_health', 'google_fit', 'samsung_health'].includes(c.id)).map((connector, idx) => (
-            <Animated.View key={connector.id} entering={FadeInDown.delay(idx * 60).duration(400)}>
+          {connectors.filter(c => ['apple_health', 'google_fit', 'samsung_health'].includes(c.connector_id)).map((connector, idx) => (
+            <Animated.View key={connector.connector_id} entering={FadeInDown.delay(idx * 60).duration(400)}>
               <ConnectorCard
                 connector={connector}
-                expanded={expandedId === connector.id}
+                expanded={expandedId === connector.connector_id}
                 available={isAvailable(connector)}
-                onToggle={() => toggleExpanded(connector.id)}
+                busy={busyId === connector.connector_id}
+                onToggle={() => toggleExpanded(connector.connector_id)}
                 onConnect={() => handleConnect(connector)}
                 onOpenStore={() => openStore(connector)}
               />
@@ -284,13 +272,14 @@ export default function AppConnectorsScreen() {
           <AppText size={11} color={theme.colors.textDim} weight="med" style={styles.sectionLabel}>
             FITNESS TRACKERS & WEARABLES
           </AppText>
-          {connectors.filter(c => ['fitbit', 'garmin', 'oura', 'withings'].includes(c.id)).map((connector, idx) => (
-            <Animated.View key={connector.id} entering={FadeInDown.delay(180 + idx * 60).duration(400)}>
+          {connectors.filter(c => ['fitbit', 'garmin', 'oura', 'withings'].includes(c.connector_id)).map((connector, idx) => (
+            <Animated.View key={connector.connector_id} entering={FadeInDown.delay(180 + idx * 60).duration(400)}>
               <ConnectorCard
                 connector={connector}
-                expanded={expandedId === connector.id}
+                expanded={expandedId === connector.connector_id}
                 available={isAvailable(connector)}
-                onToggle={() => toggleExpanded(connector.id)}
+                busy={busyId === connector.connector_id}
+                onToggle={() => toggleExpanded(connector.connector_id)}
                 onConnect={() => handleConnect(connector)}
                 onOpenStore={() => openStore(connector)}
               />
@@ -301,13 +290,14 @@ export default function AppConnectorsScreen() {
           <AppText size={11} color={theme.colors.textDim} weight="med" style={styles.sectionLabel}>
             NUTRITION & EXERCISE APPS
           </AppText>
-          {connectors.filter(c => ['myfitnesspal', 'strava'].includes(c.id)).map((connector, idx) => (
-            <Animated.View key={connector.id} entering={FadeInDown.delay(420 + idx * 60).duration(400)}>
+          {connectors.filter(c => ['myfitnesspal', 'strava'].includes(c.connector_id)).map((connector, idx) => (
+            <Animated.View key={connector.connector_id} entering={FadeInDown.delay(420 + idx * 60).duration(400)}>
               <ConnectorCard
                 connector={connector}
-                expanded={expandedId === connector.id}
+                expanded={expandedId === connector.connector_id}
                 available={isAvailable(connector)}
-                onToggle={() => toggleExpanded(connector.id)}
+                busy={busyId === connector.connector_id}
+                onToggle={() => toggleExpanded(connector.connector_id)}
                 onConnect={() => handleConnect(connector)}
                 onOpenStore={() => openStore(connector)}
               />
@@ -317,6 +307,11 @@ export default function AppConnectorsScreen() {
           <View style={{ height: 100 }} />
         </ScrollView>
       </SafeAreaView>
+      <SyncingOverlay
+        visible={syncing}
+        label="Connecting & importing data"
+        subtitle="Pulling your initial metrics into the HealthBridge vault…"
+      />
     </View>
   );
 }
@@ -325,6 +320,7 @@ function ConnectorCard({
   connector,
   expanded,
   available,
+  busy,
   onToggle,
   onConnect,
   onOpenStore,
@@ -332,15 +328,16 @@ function ConnectorCard({
   connector: AppConnector;
   expanded: boolean;
   available: boolean;
+  busy: boolean;
   onToggle: () => void;
   onConnect: () => void;
   onOpenStore: () => void;
 }) {
   return (
-    <GlassCard style={[styles.connectorCard, !available && styles.unavailable]}>
+    <GlassCard style={[styles.connectorCard, !available && styles.unavailable]} testID={`connector-${connector.connector_id}`}>
       <Pressable onPress={onToggle} style={styles.connectorHeader}>
         <View style={[styles.connectorIcon, { backgroundColor: `${connector.color}18`, borderColor: `${connector.color}40` }]}>
-          <Ionicons name={connector.icon} size={22} color={connector.color} />
+          <Ionicons name={connector.icon as any} size={22} color={connector.color} />
         </View>
         <View style={{ flex: 1, marginLeft: 14 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -355,7 +352,7 @@ function ConnectorCard({
             )}
           </View>
           <AppText size={11} color={theme.colors.textDim} style={{ marginTop: 2 }}>
-            {connector.metricsEnabled.length} metrics available
+            {connector.metrics_provided.length} metrics available
           </AppText>
         </View>
         {!available && (
@@ -378,39 +375,43 @@ function ConnectorCard({
 
           {/* Enabled Metrics */}
           <AppText size={10} color={theme.colors.textMute} weight="med" style={{ marginBottom: 6 }}>
-            METRICS ENABLED:
+            METRICS PROVIDED:
           </AppText>
           <View style={styles.metricsChips}>
-            {connector.metricsEnabled.slice(0, 6).map(m => (
+            {connector.metrics_provided.slice(0, 6).map(m => (
               <View key={m} style={styles.metricChip}>
                 <AppText size={9} color={theme.colors.teal}>
                   {m.replace(/_/g, ' ')}
                 </AppText>
               </View>
             ))}
-            {connector.metricsEnabled.length > 6 && (
+            {connector.metrics_provided.length > 6 && (
               <View style={styles.metricChip}>
                 <AppText size={9} color={theme.colors.textMute}>
-                  +{connector.metricsEnabled.length - 6} more
+                  +{connector.metrics_provided.length - 6} more
                 </AppText>
               </View>
             )}
           </View>
 
           {/* Setup Steps */}
-          <AppText size={10} color={theme.colors.textMute} weight="med" style={{ marginTop: 12, marginBottom: 8 }}>
-            HOW TO CONNECT:
-          </AppText>
-          {connector.setupSteps.map((step, i) => (
-            <View key={i} style={styles.setupStep}>
-              <View style={styles.stepNumber}>
-                <AppText size={10} weight="semi" color={theme.colors.teal}>{i + 1}</AppText>
-              </View>
-              <AppText size={11} color={theme.colors.textDim} style={{ flex: 1 }}>
-                {step}
+          {connector.setupSteps.length > 0 && (
+            <>
+              <AppText size={10} color={theme.colors.textMute} weight="med" style={{ marginTop: 12, marginBottom: 8 }}>
+                HOW TO CONNECT:
               </AppText>
-            </View>
-          ))}
+              {connector.setupSteps.map((step, i) => (
+                <View key={i} style={styles.setupStep}>
+                  <View style={styles.stepNumber}>
+                    <AppText size={10} weight="semi" color={theme.colors.teal}>{i + 1}</AppText>
+                  </View>
+                  <AppText size={11} color={theme.colors.textDim} style={{ flex: 1 }}>
+                    {step}
+                  </AppText>
+                </View>
+              ))}
+            </>
+          )}
 
           {/* Limitations Warning */}
           {connector.limitations && !available && (
@@ -425,7 +426,7 @@ function ConnectorCard({
           {/* Action Buttons */}
           <View style={styles.actionButtons}>
             {(connector.appStoreUrl || connector.playStoreUrl) && (
-              <Pressable onPress={onOpenStore} style={styles.secondaryBtn}>
+              <Pressable onPress={onOpenStore} style={styles.secondaryBtn} testID={`connector-store-${connector.connector_id}`}>
                 <Ionicons name="download-outline" size={14} color={theme.colors.textDim} />
                 <AppText size={11} color={theme.colors.textDim} style={{ marginLeft: 6 }}>
                   Get App
@@ -434,21 +435,29 @@ function ConnectorCard({
             )}
             <Pressable
               onPress={onConnect}
-              style={[styles.connectBtn, connector.connected && styles.disconnectBtn]}
+              disabled={busy}
+              style={[styles.connectBtn, connector.connected && styles.disconnectBtn, busy && { opacity: 0.6 }]}
+              testID={`connector-action-${connector.connector_id}`}
             >
-              <Ionicons
-                name={connector.connected ? 'close-circle' : 'link'}
-                size={14}
-                color={connector.connected ? theme.colors.danger : '#fff'}
-              />
-              <AppText
-                size={11}
-                weight="semi"
-                color={connector.connected ? theme.colors.danger : '#fff'}
-                style={{ marginLeft: 6 }}
-              >
-                {connector.connected ? 'Disconnect' : 'Connect'}
-              </AppText>
+              {busy ? (
+                <ActivityIndicator size="small" color={connector.connected ? theme.colors.danger : '#fff'} />
+              ) : (
+                <>
+                  <Ionicons
+                    name={connector.connected ? 'close-circle' : 'link'}
+                    size={14}
+                    color={connector.connected ? theme.colors.danger : '#fff'}
+                  />
+                  <AppText
+                    size={11}
+                    weight="semi"
+                    color={connector.connected ? theme.colors.danger : '#fff'}
+                    style={{ marginLeft: 6 }}
+                  >
+                    {connector.connected ? 'Disconnect' : 'Connect'}
+                  </AppText>
+                </>
+              )}
             </Pressable>
           </View>
         </View>
@@ -485,6 +494,9 @@ const styles = StyleSheet.create({
   infoRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
+  },
+  summaryDot: {
+    width: 8, height: 8, borderRadius: 4, marginTop: 4,
   },
   sectionLabel: {
     letterSpacing: 1.5,

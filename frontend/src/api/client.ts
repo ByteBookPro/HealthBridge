@@ -279,4 +279,49 @@ export const api = {
   getHealthSetup: () => request<any>('/health/setup'),
   
   getHealthPlatforms: () => request<any>('/health/platforms'),
+
+  // Connectors (Phase C)
+  connectors: () => request<ConnectorOut[]>('/connectors'),
+  connectConnector: (connector_id: string) =>
+    request<ConnectorOut>(`/connectors/${connector_id}/connect`, { method: 'POST' }),
+  disconnectConnector: (connector_id: string) =>
+    request<ConnectorOut>(`/connectors/${connector_id}/disconnect`, { method: 'POST' }),
+  metricAvailability: () => request<MetricAvailabilityResponse>('/metrics/availability'),
+  setPrimarySource: (metric: string, connector_id: string) =>
+    request<{ ok: boolean }>('/connectors/primary', {
+      method: 'POST', body: JSON.stringify({ metric, connector_id }),
+    }),
+  watchProximity: (watch_id: string) =>
+    request<WatchProximity>(`/watches/${watch_id}/proximity`, { method: 'POST' }),
+};
+
+export type ConnectorOut = {
+  connector_id: string;
+  name: string;
+  icon: string;
+  color: string;
+  platforms: string[];
+  metrics_provided: string[];
+  connected: boolean;
+  last_sync_at: string | null;
+};
+
+export type MetricAvailability = {
+  providers: string[];
+  connected_providers: string[];
+  available: boolean;
+  primary: string | null;
+};
+
+export type MetricAvailabilityResponse = {
+  metrics: Record<string, MetricAvailability>;
+  total_connected: number;
+};
+
+export type WatchProximity = {
+  watch_id: string;
+  in_range: boolean;
+  rssi: number;
+  distance_m: number;
+  scanned_at: string;
 };

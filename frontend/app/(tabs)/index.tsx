@@ -14,8 +14,9 @@ import ActivityRings from '@/src/components/ActivityRings';
 import Sparkline from '@/src/components/Sparkline';
 import AuroraBackground from '@/src/components/AuroraBackground';
 import ConnectDeviceCard from '@/src/components/ConnectDeviceCard';
-import { api, type MetricSummary, type Watch, type CategoriesResponse } from '@/src/api/client';
+import { api, type MetricSummary, type Watch, type CategoriesResponse, type MetricAvailabilityResponse } from '@/src/api/client';
 import { useAuth } from '@/src/context/AuthContext';
+import SyncingOverlay from '@/src/components/SyncingOverlay';
 
 // Metric icons mapping
 const METRIC_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
@@ -78,18 +79,22 @@ export default function Dashboard() {
   const [categories, setCategories] = useState<CategoriesResponse | null>(null);
   const [watches, setWatches] = useState<Watch[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [availability, setAvailability] = useState<MetricAvailabilityResponse | null>(null);
+  const [syncing, setSyncing] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['activity', 'vitals']));
 
   const load = useCallback(async () => {
     try {
-      const [m, w, cats] = await Promise.all([
+      const [m, w, cats, avail] = await Promise.all([
         api.metricsAll(),
         api.watches(),
         api.metricsCategories(),
+        api.metricAvailability().catch(() => null),
       ]);
       setMetrics(m);
       setWatches(w);
       setCategories(cats);
+      if (avail) setAvailability(avail);
     } catch (e) {
       // Fallback to basic metrics
       try {
@@ -104,7 +109,12 @@ export default function Dashboard() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await load();
+    setSyncing(true);
+    try {
+      await api.syncNow();
+      await load();
+    } catch {}
+    setSyncing(false);
     setRefreshing(false);
   }, [load]);
 
@@ -182,6 +192,36 @@ export default function Dashboard() {
               <Ionicons name="sparkles" size={18} color={theme.colors.teal} />
             </Pressable>
           </View>
+
+          {/* No-connectors CTA: shown when the user has not connected any
+              data sources yet — metrics stay locked until at least one
+              connector starts providing data. */}
+          {availability && availability.total_connected === 0 && (
+            <Animated.View entering={FadeInDown.duration(400)}>
+              <Pressable onPress={() => router.push('/app-connectors')} testID="dashboard-connect-cta">
+                <GlassCard glow style={styles.connectBanner}>
+                  <LinearGradient
+                    colors={['rgba(45,212,191,0.18)', 'rgba(45,212,191,0)']}
+                    start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                    style={StyleSheet.absoluteFill}
+                    pointerEvents="none"
+                  />
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <View style={styles.connectBannerIcon}>
+                      <Ionicons name="cloud-offline-outline" size={22} color={theme.colors.teal} />
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <AppText weight="semi" size={14}>Connect a data source</AppText>
+                      <AppText size={11} color={theme.colors.textDim} style={{ marginTop: 2 }}>
+                        Metrics stay locked until an app starts providing data.
+                      </AppText>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={theme.colors.textMute} />
+                  </View>
+                </GlassCard>
+              </Pressable>
+            </Animated.View>
+          )}
 
           {/* Connect Device Card - Clean button to connect watches */}
           <Animated.View entering={FadeInDown.duration(400)}>
@@ -290,28 +330,46 @@ export default function Dashboard() {
                 {/* Metrics Grid */}
                 {isExpanded && (
                   <View style={styles.metricsGrid}>
-                    {catMetrics.map((m, idx) => (
+                    {catMetrics.map((m, idx) => {
+                      const avail = availability?.metrics?.[m.metric];
+                      // Until at least one connector is connected, treat all
+                      // metrics as locked. Once connectors exist, only show
+                      // a metric as live if a connected provider supplies it.
+                      const isLocked = availability != null && !avail?.available;
+                      return (
                       <Animated.View key={m.metric} entering={FadeInRight.delay(idx * 30).duration(300)} style={styles.metricCell}>
                         <Pressable
-                          onPress={() => router.push(`/metric/${m.metric}`)}
+                          onPress={() => {
+                            if (isLocked) router.push('/app-connectors');
+                            else router.push(`/metric/${m.metric}`);
+                          }}
                           style={({ pressed }) => [{ opacity: pressed ? 0.8 : 1 }]}
+                          testID={`metric-card-${m.metric}`}
                         >
-                          <GlassCard style={styles.metricCard}>
+                          <GlassCard style={[styles.metricCard, isLocked && styles.metricLocked]}>
                             <View style={styles.metricHeader}>
                               <View style={[styles.metricIcon, { backgroundColor: `${catColor}18`, borderColor: `${catColor}40` }]}>
-                                <Ionicons name={METRIC_ICONS[m.metric] || 'analytics-outline'} size={14} color={catColor} />
+                                <Ionicons name={METRIC_ICONS[m.metric] || 'analytics-outline'} size={14} color={isLocked ? theme.colors.textMute : catColor} />
                               </View>
                               {/* Source badges */}
                               <View style={styles.sourceBadges}>
-                                {m.apple_value != null && (
-                                  <View style={styles.sourceBadge}>
-                                    <Ionicons name="logo-apple" size={8} color="#F3F4F6" />
+                                {isLocked ? (
+                                  <View style={styles.lockBadge}>
+                                    <Ionicons name="lock-closed" size={8} color={theme.colors.textMute} />
                                   </View>
-                                )}
-                                {m.samsung_value != null && (
-                                  <View style={[styles.sourceBadge, { backgroundColor: 'rgba(59,130,246,0.15)' }]}>
-                                    <Ionicons name="phone-portrait" size={8} color="#3B82F6" />
-                                  </View>
+                                ) : (
+                                  <>
+                                    {m.apple_value != null && (
+                                      <View style={styles.sourceBadge}>
+                                        <Ionicons name="logo-apple" size={8} color="#F3F4F6" />
+                                      </View>
+                                    )}
+                                    {m.samsung_value != null && (
+                                      <View style={[styles.sourceBadge, { backgroundColor: 'rgba(59,130,246,0.15)' }]}>
+                                        <Ionicons name="phone-portrait" size={8} color="#3B82F6" />
+                                      </View>
+                                    )}
+                                  </>
                                 )}
                               </View>
                             </View>
@@ -319,21 +377,30 @@ export default function Dashboard() {
                               {m.label}
                             </AppText>
                             <View style={styles.metricValue}>
-                              <AppText weight="heading" size={18} style={{ letterSpacing: -0.5 }}>
-                                {formatValue(m.current, m.unit)}
+                              <AppText weight="heading" size={18} style={{ letterSpacing: -0.5, color: isLocked ? theme.colors.textMute : theme.colors.text }}>
+                                {isLocked ? '—' : formatValue(m.current, m.unit)}
                               </AppText>
                               <AppText size={9} color={theme.colors.textMute} style={{ marginLeft: 2, marginBottom: 1 }}>
                                 {m.unit}
                               </AppText>
                             </View>
-                            {/* Sparkline */}
-                            {m.trend && m.trend.length > 0 && (
+                            {/* Sparkline (only when available) */}
+                            {!isLocked && m.trend && m.trend.length > 0 && (
                               <View style={styles.sparkContainer}>
                                 <Sparkline data={m.trend} color={catColor} width={70} height={18} />
                               </View>
                             )}
-                            {/* Delta indicator */}
-                            {m.delta_pct !== 0 && (
+                            {/* Connect-CTA chip when locked */}
+                            {isLocked && (
+                              <View style={styles.connectCta} testID={`metric-locked-cta-${m.metric}`}>
+                                <Ionicons name="link" size={9} color={theme.colors.teal} />
+                                <AppText size={8} color={theme.colors.teal} style={{ marginLeft: 3 }}>
+                                  Connect
+                                </AppText>
+                              </View>
+                            )}
+                            {/* Delta indicator (only when available) */}
+                            {!isLocked && m.delta_pct !== 0 && (
                               <View style={[styles.delta, { backgroundColor: m.delta_pct >= 0 ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)' }]}>
                                 <Ionicons
                                   name={m.delta_pct >= 0 ? 'trending-up' : 'trending-down'}
@@ -352,7 +419,8 @@ export default function Dashboard() {
                           </GlassCard>
                         </Pressable>
                       </Animated.View>
-                    ))}
+                      );
+                    })}
                   </View>
                 )}
               </Animated.View>
@@ -393,6 +461,11 @@ export default function Dashboard() {
           <View style={{ height: 100 }} />
         </ScrollView>
       </SafeAreaView>
+      <SyncingOverlay
+        visible={syncing}
+        label="Syncing your health data"
+        subtitle="Bridging metrics from your watches & connected apps…"
+      />
     </View>
   );
 }
@@ -515,4 +588,35 @@ const styles = StyleSheet.create({
   quickActionsRow: { flexDirection: 'row', justifyContent: 'space-around', paddingVertical: theme.space.sm },
   quickActionBtn: { alignItems: 'center', padding: 8 },
   quickActionIcon: { width: 50, height: 50, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+
+  connectBanner: {
+    marginBottom: theme.space.md,
+    padding: theme.space.md,
+    overflow: 'hidden',
+  },
+  connectBannerIcon: {
+    width: 40, height: 40, borderRadius: 12,
+    backgroundColor: 'rgba(45,212,191,0.14)',
+    borderWidth: 1, borderColor: 'rgba(45,212,191,0.3)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+
+  // Locked metric state
+  metricLocked: {
+    opacity: 0.5,
+    borderStyle: 'dashed',
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  lockBadge: {
+    width: 12, height: 12, borderRadius: 6,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  connectCta: {
+    position: 'absolute', bottom: 6, right: 6,
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 5, paddingVertical: 2, borderRadius: 999,
+    backgroundColor: 'rgba(45,212,191,0.14)',
+    borderWidth: 1, borderColor: 'rgba(45,212,191,0.3)',
+  },
 });

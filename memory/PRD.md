@@ -192,12 +192,13 @@
 
 ## 6. Pending/Future Work
 
-### Phase C: Watch Proximity & Syncing Animation (NEXT)
+### Phase C: Watch Proximity & Syncing Animation (COMPLETED)
 | Feature | Status | Description |
 |---------|--------|-------------|
-| Watch Proximity Detection | ⏳ Planned | Only enable new watch connection when in proximity |
-| Primary Data Source Selection | ⏳ Planned | Select which watch to fetch data from |
-| Syncing Animation | ⏳ Planned | Show animation during data sync |
+| Watch Proximity Detection | ✅ Done | `POST /watches/{id}/proximity` returns rssi/distance/in_range; UI shows animated radar scan modal before connect |
+| Primary Data Source Selection | ✅ Done | `POST /connectors/primary` per metric; picker on customize-metrics screen when ≥2 providers connected |
+| Syncing Animation | ✅ Done | `SyncingOverlay` component (pulsing rings + flow particles + rotating arc) shown during sync-now & connector connect |
+| Connector-aware metric gating | ✅ Done | `/metrics/availability` map; locked dashboard cards + locked toggle in customize-metrics until a relevant connector is connected |
 
 ### Future Enhancements
 - Push notifications for health alerts

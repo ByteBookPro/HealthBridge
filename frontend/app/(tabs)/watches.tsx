@@ -10,6 +10,8 @@ import AppText from '@/src/components/AppText';
 import GlassCard from '@/src/components/GlassCard';
 import PrimaryButton from '@/src/components/PrimaryButton';
 import AuroraBackground from '@/src/components/AuroraBackground';
+import ProximityScanModal from '@/src/components/ProximityScanModal';
+import SyncingOverlay from '@/src/components/SyncingOverlay';
 import { api, type Watch } from '@/src/api/client';
 
 const WATCH_META = {
@@ -28,6 +30,8 @@ const WATCH_META = {
 export default function Watches() {
   const [watches, setWatches] = useState<Watch[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [proximityWatch, setProximityWatch] = useState<Watch | null>(null);
+  const [syncing, setSyncing] = useState(false);
   const router = useRouter();
 
   const load = useCallback(async () => {
@@ -36,11 +40,33 @@ export default function Watches() {
 
   useEffect(() => { load(); }, [load]);
 
-  const toggle = async (id: string) => {
+  const toggle = async (w: Watch) => {
+    // Disconnect immediately. Connect requires a proximity scan first.
+    if (w.connected) {
+      try {
+        const updated = await api.toggleWatch(w.id);
+        setWatches((ws) => ws.map((x) => (x.id === w.id ? updated : x)));
+      } catch {}
+      return;
+    }
+    setProximityWatch(w);
+  };
+
+  const handleProximityProceed = async () => {
+    if (!proximityWatch) return;
+    const w = proximityWatch;
+    setProximityWatch(null);
+    setSyncing(true);
     try {
-      const updated = await api.toggleWatch(id);
-      setWatches((ws) => ws.map((w) => (w.id === id ? updated : w)));
+      const updated = await api.toggleWatch(w.id);
+      setWatches((ws) => ws.map((x) => (x.id === w.id ? updated : x)));
+      // Trigger initial sync after connection
+      await api.syncNow();
+      await load();
     } catch {}
+    finally {
+      setSyncing(false);
+    }
   };
 
   return (
@@ -144,7 +170,7 @@ export default function Watches() {
                   <PrimaryButton
                     title={w.connected ? 'Disconnect' : 'Connect Watch'}
                     variant={w.connected ? 'secondary' : 'primary'}
-                    onPress={() => toggle(w.id)}
+                    onPress={() => toggle(w)}
                     testID={`watch-toggle-${w.platform}`}
                   />
                 </GlassCard>
@@ -166,6 +192,19 @@ export default function Watches() {
           <View style={{ height: 100 }} />
         </ScrollView>
       </SafeAreaView>
+
+      <ProximityScanModal
+        visible={!!proximityWatch}
+        watchId={proximityWatch?.id ?? null}
+        watchName={proximityWatch?.model || 'Watch'}
+        onClose={() => setProximityWatch(null)}
+        onProceed={handleProximityProceed}
+      />
+      <SyncingOverlay
+        visible={syncing}
+        label="Connecting & syncing"
+        subtitle="Reading metrics from your watch into the HealthBridge vault…"
+      />
     </View>
   );
 }

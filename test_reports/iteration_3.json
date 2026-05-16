@@ -1,0 +1,49 @@
+{
+  "summary": "Phase C testing complete. Backend: 19/19 pytest cases pass on the public preview URL for the new Connector + Availability + Watch-Proximity surface (auto-seed 9 connectors, connect/disconnect with primary auto-assignment & re-assignment, /metrics/availability flipping, /connectors/primary 200/400/404 paths, /watches/{id}/proximity shape + 404). Regression smoke (auth/me, /watches, /metrics/summary, /metrics/categories, /metrics/sync-now, /admin/stats) all green. Frontend e2e on 390x844: login → demo dashboard shows 'Connect a data source' banner (dashboard-connect-cta) + every metric card carries metric-locked-cta-{metric} ✓; /app-connectors shows connectors-summary 'No data sources connected — …', expanding the apple_health card reveals Connect button → SyncingOverlay (syncing-overlay) animates ~1.4s → card flips to Connected ✓; after connect, dashboard banner disappears and metric-locked-cta-steps is gone ✓; /customize-metrics shows 18 locked metric-connect-cta-* chips for unavailable metrics, and after connecting apple_health + fitbit (both provide steps) tapping metric-primary-steps reveals metric-source-picker-steps with options metric-source-option-steps-apple_health and -fitbit — switching primary updates the chip to 'Fitbit' instantly ✓. Watch flow: discovered a CRITICAL runtime error 'proximityWatch is not defined' in app/(tabs)/watches.tsx — missing useState declarations for proximityWatch/setProximityWatch and syncing/setSyncing. I added the missing useState lines and re-verified: Watches screen renders, Disconnect works, then 'Connect Watch' tap opens proximity-modal with radar scan → 'Watch detected • RSSI -45 dBm • 1.5 m • IN RANGE' + 'Connect Watch' button ✓.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Watches tab / ProximityScanModal",
+        "issue": "Runtime ReferenceError 'proximityWatch is not defined' — useState hooks for proximityWatch and syncing were never declared in app/(tabs)/watches.tsx. The Watches screen rendered the LogBox red-screen and the Connect-Watch → Proximity flow was completely blocked. FIXED in this iteration by adding the two missing useState lines.",
+        "affected_selectors": ["watches-screen", "proximity-modal", "watch-toggle-apple", "watch-toggle-samsung"]
+      }
+    ],
+    "design_issues": [
+      { "screen": "global", "issues": ["Pre-existing warnings carried over: props.pointerEvents is deprecated; shadow* style props are deprecated. Non-blocking."] }
+    ],
+    "react_native_issues": [
+      { "component": "expo-notifications (web)", "issue": "'Listening to push token changes is not yet fully supported on web' — expected per spec." }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_healthbridge_v5_phase_c.py",
+    "/app/test_reports/pytest/pytest_v5_results.xml"
+  ],
+  "action_items": [
+    "Please confirm the fix I applied in /app/frontend/app/(tabs)/watches.tsx (lines 31-35) — added useState for proximityWatch and syncing. The references existed in toggle()/handleProximityProceed()/JSX but the declarations were absent, causing the entire tab to crash. End-to-end Watches flow is now verified working.",
+    "Consider also exposing a data-testid on the ProximityScanModal action button (currently the modal works but the action button doesn't carry a testid in the proximity-modal area). Not blocking — text-based 'Connect Watch' / 'Scan Again' selectors work.",
+    "Minor cosmetic: dashboard 'Today's Progress' ring card (rings-card) keeps showing static values (Calories 1839, Steps 8k) even when zero connectors are connected. The per-metric cards are correctly locked, but the rings widget looks inconsistent with the locked-state narrative. Decide whether to gate the rings on availability too."
+  ],
+  "critical_code_review_comments": [
+    "watches.tsx had references to undeclared state — indicates the file was edited without a quick TS/lint pass. ESLint/typescript-strict would have caught this immediately. Recommend wiring `yarn tsc --noEmit` into the dev loop.",
+    "server.py is now 1887 lines — Phase C adds ~230 LOC of connector/availability/proximity surface. Strongly recommend splitting into routers/ (auth, admin, billing, connectors, watches, metrics, ai_insights, goals, reports) — file size is well past the 700-line threshold and is becoming hard to navigate.",
+    "Connector primary auto-assignment on connect (server.py:1150-1160) is correct and idempotent. Disconnect re-assignment (1173-1193) correctly falls back to another connected provider or clears the entry — verified by tests.",
+    "Watch proximity endpoint uses random.random() for in_range — fine for the simulated bridge; the 5-retry pattern in tests handles the ~20% out-of-range case.",
+    "/api/metrics/availability iterates connectors x metrics in Python — acceptable at this scale (~9 connectors x ~30 metrics) but could be a single aggregation pipeline if the metric list grows."
+  ],
+  "updated_files": [
+    "/app/frontend/app/(tabs)/watches.tsx (added 2 missing useState lines — proximityWatch + syncing)",
+    "/app/backend/tests/test_healthbridge_v5_phase_c.py (created — 19 pytest cases)",
+    "/app/test_reports/iteration_3.json (created)",
+    "/app/test_reports/pytest/pytest_v5_results.xml (generated)"
+  ],
+  "success_rate": { "backend": "100% (19/19 v5 Phase C)", "frontend": "100% on all Phase C critical flows after the watches.tsx fix (connectors auto-seed banner, connect → SyncingOverlay → Connected, dashboard gating clears, customize-metrics primary picker with two providers, watch proximity modal radar + IN RANGE)" },
+  "test_credentials": "demo@healthbridge.app / Demo1234! (PRO trial) and admin@healthbridge.app / ySk4rWp4nSn5KsB8WvI4iF — verified working via test_credentials.md",
+  "seed_data_creation": "Tests register disposable users prefixed `phc_<uuid>@example.com` for isolated connector-state assertions. The demo user's connectors were left CONNECTED to apple_health + fitbit after the frontend run (so steps shows Fitbit as primary). Next testing agent can reset by POST /api/connectors/{id}/disconnect for each.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "BASE_URL=https://b5756d38-6d5c-4694-ae0a-e29e724ded9b.preview.emergentagent.com, API=/api. Phase C endpoints all green. Demo user is left with apple_health+fitbit connected and steps.primary=fitbit — call POST /api/connectors/apple_health/disconnect and /api/connectors/fitbit/disconnect (with demo bearer) to fully reset before re-running the 'banner appears' assertion. Frontend testids used: dashboard-connect-cta, connectors-summary, connector-{id}, connector-action-{id}, syncing-overlay, metric-card-{metric}, metric-locked-cta-{metric}, metric-connect-cta-{metric}, metric-toggle-{metric}, metric-primary-{metric}, metric-source-picker-{metric}, metric-source-option-{metric}-{connector_id}, watch-card-{kind}, watch-toggle-{kind}, watches-screen, proximity-modal.",
+  "rca_of_issue": "Bug: 'ReferenceError: proximityWatch is not defined' on /watches. Root cause: app/(tabs)/watches.tsx referenced setProximityWatch (line 50/56), proximityWatch (54-55, 195-200), setSyncing (57,66), and syncing (203-207) but no `const [proximityWatch, setProximityWatch] = useState(...)` or `const [syncing, setSyncing] = useState(false)` were declared at the top of the component. The error surfaced inside the Watches functional component because `setProximityWatch(w)` evaluated to an undefined identifier on first render path. Fix: inserted two useState lines at the top of the component (lines 33-34). Verified the Watches screen now renders fully and the proximity modal triggers correctly when tapping a disconnected watch."
+}
