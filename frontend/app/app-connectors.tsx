@@ -211,6 +211,37 @@ export default function AppConnectorsScreen() {
   };
 
   const totalConnected = connectors.filter((c) => c.connected).length;
+  // Connectors that are NOT yet connected and ARE compatible with the
+  // current platform (or 'web' which sees all of them) — these are the ones
+  // the bulk-connect button will attempt.
+  const bulkTargets = connectors.filter((c) =>
+    !c.connected && (c.platforms.includes(currentPlatform) || currentPlatform === 'web')
+  );
+
+  const handleBulkConnect = async () => {
+    if (bulkTargets.length === 0) return;
+    setSyncing(true);
+    try {
+      const platforms = currentPlatform === 'web' ? undefined : [currentPlatform];
+      const [updated] = await Promise.all([
+        api.bulkConnect(platforms),
+        api.syncNow().catch(() => null),
+        new Promise((res) => setTimeout(res, 1400)),
+      ]);
+      setConnectors(updated.map((c) => ({
+        ...c,
+        description: CONNECTOR_META[c.connector_id]?.description || '',
+        setupSteps: CONNECTOR_META[c.connector_id]?.setupSteps || [],
+        appStoreUrl: CONNECTOR_META[c.connector_id]?.appStoreUrl,
+        playStoreUrl: CONNECTOR_META[c.connector_id]?.playStoreUrl,
+        limitations: CONNECTOR_META[c.connector_id]?.limitations,
+      })));
+    } catch (e: any) {
+      Alert.alert('Bulk connect failed', e?.message || 'Try connecting individually.');
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   return (
     <View style={styles.root}>
@@ -246,6 +277,19 @@ export default function AppConnectorsScreen() {
                       : `${totalConnected} ${totalConnected === 1 ? 'source' : 'sources'} connected — metrics unlock automatically as data flows in.`}
                   </AppText>
                 </View>
+                {bulkTargets.length > 0 && (
+                  <Pressable
+                    onPress={handleBulkConnect}
+                    style={styles.bulkBtn}
+                    disabled={syncing}
+                    testID="bulk-connect-btn"
+                  >
+                    <Ionicons name="flash" size={14} color={theme.colors.teal} />
+                    <AppText size={12} weight="semi" color={theme.colors.teal} style={{ marginLeft: 8 }}>
+                      Connect all {bulkTargets.length} available {bulkTargets.length === 1 ? 'app' : 'apps'}
+                    </AppText>
+                  </Pressable>
+                )}
               </GlassCard>
             </Animated.View>
           )}

@@ -10,14 +10,15 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { theme } from '@/src/theme/theme';
 import AppText from './AppText';
 import PrimaryButton from './PrimaryButton';
-import { api, type WatchProximity } from '@/src/api/client';
+import { HealthBridge, type ProximityResult } from '@/src/services/healthBridge';
 
 type Props = {
   visible: boolean;
   watchId: string | null;
   watchName: string;
+  nameHint?: string;   // BLE advertised-name filter ("Apple Watch", "Galaxy")
   onClose: () => void;
-  onProceed: (result: WatchProximity) => void;
+  onProceed: (result: ProximityResult) => void;
 };
 
 /**
@@ -25,8 +26,8 @@ type Props = {
  * be connected. Polls /api/watches/{id}/proximity and only enables the
  * "Proceed" button if the watch is in range.
  */
-export default function ProximityScanModal({ visible, watchId, watchName, onClose, onProceed }: Props) {
-  const [result, setResult] = useState<WatchProximity | null>(null);
+export default function ProximityScanModal({ visible, watchId, watchName, nameHint, onClose, onProceed }: Props) {
+  const [result, setResult] = useState<ProximityResult | null>(null);
   const [scanning, setScanning] = useState(false);
   const [attempts, setAttempts] = useState(0);
 
@@ -55,14 +56,14 @@ export default function ProximityScanModal({ visible, watchId, watchName, onClos
     setResult(null);
     setAttempts((n) => n + 1);
     try {
-      // Show scanning animation for at least 1.4s
+      // Show scanning animation for at least 1.4s so the radar feels deliberate
       const [r] = await Promise.all([
-        api.watchProximity(watchId),
+        HealthBridge.scanProximity({ watchId, nameHint, durationMs: 1600 }),
         new Promise((res) => setTimeout(res, 1400)),
       ]);
       setResult(r);
     } catch {
-      setResult({ watch_id: watchId, in_range: false, rssi: -100, distance_m: 999, scanned_at: '' });
+      setResult({ in_range: false, rssi: -100, distance_m: 999, source: 'simulated_api' });
     } finally {
       setScanning(false);
     }
@@ -122,6 +123,16 @@ export default function ProximityScanModal({ visible, watchId, watchName, onClos
                 <View style={styles.divider} />
                 <Stat label="Status" value={inRange ? 'IN RANGE' : 'OUT'} highlight={inRange} />
               </View>
+            )}
+            {result && (
+              <AppText
+                size={9}
+                color={result.source === 'native_ble' ? theme.colors.emerald : theme.colors.textMute}
+                style={{ marginTop: 6, letterSpacing: 1 }}
+                testID="proximity-source"
+              >
+                {result.source === 'native_ble' ? 'NATIVE BLE SCAN' : 'SIMULATED SCAN (dev build only)'}
+              </AppText>
             )}
 
             <View style={{ height: 20 }} />

@@ -13,7 +13,7 @@ from __future__ import annotations
 import os, logging, random, uuid, hmac, hashlib, secrets
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import List, Literal, Optional, Any
+from typing import List, Literal, Optional, Any, Dict
 
 import bcrypt
 import jwt
@@ -1110,6 +1110,19 @@ class ConnectorOut(BaseModel):
 class PrimarySourceIn(BaseModel):
     metric: str
     connector_id: str
+    device_id: Optional[str] = None  # None ⇒ global default for this account
+
+
+class BulkConnectIn(BaseModel):
+    platforms: Optional[List[str]] = None  # if provided, only connect connectors that
+    # support at least one of these platforms (e.g. ["ios"] / ["android"]).
+    connector_ids: Optional[List[str]] = None  # if provided, restrict to these connectors
+
+
+class DeviceRegisterIn(BaseModel):
+    device_id: str = Field(min_length=4, max_length=64)
+    label: str = Field(min_length=1, max_length=80)
+    platform: Literal["ios", "android", "web"] = "web"
 
 
 async def ensure_connectors_seeded(user_id: str) -> None:
@@ -1147,16 +1160,18 @@ async def connect_connector(connector_id: str, user=Depends(current_user)):
     )
     if res.matched_count == 0:
         raise HTTPException(404, "Connector not found")
-    # Auto-set as primary for any metric that currently has no primary
     conn = await db.connectors.find_one(
         {"user_id": user["id"], "connector_id": connector_id}, {"_id": 0, "user_id": 0}
     )
+    # Auto-set as account-global primary for any metric that currently has no primary
     for metric in conn.get("metrics_provided", []):
-        existing = await db.metric_primary.find_one({"user_id": user["id"], "metric": metric})
+        existing = await db.metric_primary.find_one({
+            "user_id": user["id"], "metric": metric, "device_id": "*",
+        })
         if not existing:
             await db.metric_primary.insert_one({
-                "user_id": user["id"], "metric": metric, "connector_id": connector_id,
-                "updated_at": now,
+                "user_id": user["id"], "metric": metric, "device_id": "*",
+                "connector_id": connector_id, "updated_at": now,
             })
     return conn
 
@@ -1170,12 +1185,12 @@ async def disconnect_connector(connector_id: str, user=Depends(current_user)):
     )
     if res.matched_count == 0:
         raise HTTPException(404, "Connector not found")
-    # Remove primary assignments for this connector — reassign to any other connected provider
+    # Remove primary assignments (account-global AND per-device) for this connector
+    # and reassign to any other connected provider when possible.
     primaries = await db.metric_primary.find(
         {"user_id": user["id"], "connector_id": connector_id}
-    ).to_list(100)
+    ).to_list(500)
     for p in primaries:
-        # Find another connected connector that provides this metric
         alt = await db.connectors.find_one({
             "user_id": user["id"], "connected": True,
             "metrics_provided": p["metric"],
@@ -1183,14 +1198,15 @@ async def disconnect_connector(connector_id: str, user=Depends(current_user)):
         }, {"_id": 0})
         if alt:
             await db.metric_primary.update_one(
-                {"user_id": user["id"], "metric": p["metric"]},
+                {"user_id": user["id"], "metric": p["metric"], "device_id": p.get("device_id", "*")},
                 {"$set": {"connector_id": alt["connector_id"],
                           "updated_at": datetime.now(timezone.utc)}},
             )
         else:
-            await db.metric_primary.delete_one(
-                {"user_id": user["id"], "metric": p["metric"]}
-            )
+            await db.metric_primary.delete_one({
+                "user_id": user["id"], "metric": p["metric"],
+                "device_id": p.get("device_id", "*"),
+            })
     conn = await db.connectors.find_one(
         {"user_id": user["id"], "connector_id": connector_id}, {"_id": 0, "user_id": 0}
     )
@@ -1198,22 +1214,32 @@ async def disconnect_connector(connector_id: str, user=Depends(current_user)):
 
 
 @api.get("/metrics/availability")
-async def metrics_availability(user=Depends(current_user)):
+async def metrics_availability(device_id: Optional[str] = None, user=Depends(current_user)):
     """Returns availability map per metric — which connectors provide it,
     whether at least one is connected (so the metric can be enabled), and the
     user-chosen primary connector for that metric.
 
-    Dashboard & customize-metrics use this to gate the enable toggle. Until a
-    relevant connector is connected, the metric is not available.
+    When `device_id` is provided, the primary returned is the device-specific
+    primary if one exists, otherwise the account-global primary. This lets
+    households sharing one account pick different primaries per phone.
     """
     await ensure_connectors_seeded(user["id"])
     connectors = await db.connectors.find(
         {"user_id": user["id"]}, {"_id": 0, "user_id": 0}
     ).to_list(50)
-    primaries = await db.metric_primary.find(
-        {"user_id": user["id"]}, {"_id": 0, "user_id": 0}
+    # Account-global primaries
+    globals_ = await db.metric_primary.find(
+        {"user_id": user["id"], "device_id": {"$in": [None, "*"]}},
+        {"_id": 0, "user_id": 0},
     ).to_list(200)
-    primary_by_metric = {p["metric"]: p["connector_id"] for p in primaries}
+    global_by_metric = {p["metric"]: p["connector_id"] for p in globals_}
+    device_by_metric: Dict[str, str] = {}
+    if device_id:
+        device_docs = await db.metric_primary.find(
+            {"user_id": user["id"], "device_id": device_id},
+            {"_id": 0, "user_id": 0},
+        ).to_list(200)
+        device_by_metric = {p["metric"]: p["connector_id"] for p in device_docs}
 
     # Collect all metric ids from the metric template
     all_metrics: set = set()
@@ -1228,19 +1254,27 @@ async def metrics_availability(user=Depends(current_user)):
         all_providers = [c["connector_id"] for c in connectors if metric in c.get("metrics_provided", [])]
         connected_providers = [c["connector_id"] for c in connectors
                                if metric in c.get("metrics_provided", []) and c.get("connected")]
+        primary = device_by_metric.get(metric) or global_by_metric.get(metric)
         out[metric] = {
             "providers": all_providers,
             "connected_providers": connected_providers,
             "available": len(connected_providers) > 0,
-            "primary": primary_by_metric.get(metric),
+            "primary": primary,
+            "primary_is_device_specific": metric in device_by_metric,
         }
-    return {"metrics": out, "total_connected": sum(1 for c in connectors if c.get("connected"))}
+    return {
+        "metrics": out,
+        "total_connected": sum(1 for c in connectors if c.get("connected")),
+        "device_id": device_id,
+    }
 
 
 @api.post("/connectors/primary")
 async def set_primary_source(payload: PrimarySourceIn, user=Depends(current_user)):
-    """Set the primary connector for a metric. The connector must be connected
-    and must provide that metric."""
+    """Set the primary connector for a metric. When `device_id` is supplied,
+    the assignment is scoped to that device only (per-device primary). When
+    `device_id` is omitted, the assignment is the account-global default.
+    The connector must be connected and provide that metric."""
     conn = await db.connectors.find_one({
         "user_id": user["id"], "connector_id": payload.connector_id,
     }, {"_id": 0})
@@ -1251,12 +1285,97 @@ async def set_primary_source(payload: PrimarySourceIn, user=Depends(current_user
     if payload.metric not in conn.get("metrics_provided", []):
         raise HTTPException(400, f"{conn['name']} does not provide this metric")
     now = datetime.now(timezone.utc)
+    device_key = payload.device_id or "*"
     await db.metric_primary.update_one(
-        {"user_id": user["id"], "metric": payload.metric},
+        {"user_id": user["id"], "metric": payload.metric, "device_id": device_key},
         {"$set": {"connector_id": payload.connector_id, "updated_at": now}},
         upsert=True,
     )
-    return {"ok": True, "metric": payload.metric, "connector_id": payload.connector_id}
+    return {
+        "ok": True, "metric": payload.metric,
+        "connector_id": payload.connector_id,
+        "device_id": payload.device_id,
+    }
+
+
+@api.delete("/connectors/primary/{metric}")
+async def clear_primary_source(metric: str, device_id: Optional[str] = None, user=Depends(current_user)):
+    """Clear a primary-source assignment. When `device_id` is supplied, only
+    the device-specific override is removed (revealing the account-global
+    default). Otherwise the global default is cleared."""
+    device_key = device_id or "*"
+    await db.metric_primary.delete_one({
+        "user_id": user["id"], "metric": metric, "device_id": device_key,
+    })
+    return {"ok": True}
+
+
+@api.post("/connectors/connect-all", response_model=List[ConnectorOut])
+async def bulk_connect(payload: BulkConnectIn, user=Depends(current_user)):
+    """Connect every disconnected connector at once. Optionally filter by
+    platform (e.g. only iOS-compatible ones) or by connector_ids. Used by the
+    'Connect all available' affordance on /app-connectors."""
+    await ensure_connectors_seeded(user["id"])
+    query: Dict[str, Any] = {"user_id": user["id"], "connected": False}
+    if payload.connector_ids:
+        query["connector_id"] = {"$in": payload.connector_ids}
+    if payload.platforms:
+        # Mongo $in matches if ANY of the connector's platforms is in the requested list
+        query["platforms"] = {"$in": payload.platforms}
+    targets = await db.connectors.find(query, {"_id": 0, "user_id": 0}).to_list(50)
+    now = datetime.now(timezone.utc)
+    if not targets:
+        return await db.connectors.find(
+            {"user_id": user["id"]}, {"_id": 0, "user_id": 0}
+        ).to_list(50)
+    ids = [t["connector_id"] for t in targets]
+    await db.connectors.update_many(
+        {"user_id": user["id"], "connector_id": {"$in": ids}},
+        {"$set": {"connected": True, "last_sync_at": now}},
+    )
+    # Auto-assign account-global primary for any metric that has no primary yet
+    for t in targets:
+        for metric in t.get("metrics_provided", []):
+            existing = await db.metric_primary.find_one({
+                "user_id": user["id"], "metric": metric, "device_id": "*",
+            })
+            if not existing:
+                await db.metric_primary.insert_one({
+                    "user_id": user["id"], "metric": metric, "device_id": "*",
+                    "connector_id": t["connector_id"], "updated_at": now,
+                })
+    all_conns = await db.connectors.find(
+        {"user_id": user["id"]}, {"_id": 0, "user_id": 0}
+    ).to_list(50)
+    order = {c["connector_id"]: i for i, c in enumerate(CONNECTOR_TEMPLATE)}
+    all_conns.sort(key=lambda d: order.get(d["connector_id"], 99))
+    return all_conns
+
+
+@api.post("/devices/register")
+async def register_device(payload: DeviceRegisterIn, user=Depends(current_user)):
+    """Register / upsert a device profile for this account. Used to label
+    per-device primary-source overrides ('iPhone 15', 'Pixel 8') so the
+    customize-metrics screen can show a friendly device chip."""
+    now = datetime.now(timezone.utc)
+    await db.user_devices.update_one(
+        {"user_id": user["id"], "device_id": payload.device_id},
+        {"$set": {
+            "label": payload.label, "platform": payload.platform,
+            "last_seen_at": now,
+        }, "$setOnInsert": {"first_seen_at": now}},
+        upsert=True,
+    )
+    return {"ok": True, "device_id": payload.device_id}
+
+
+@api.get("/devices")
+async def list_devices(user=Depends(current_user)):
+    """List all device profiles registered against this account."""
+    docs = await db.user_devices.find(
+        {"user_id": user["id"]}, {"_id": 0, "user_id": 0}
+    ).sort("last_seen_at", -1).to_list(20)
+    return docs
 
 
 # ---------- Watch proximity (Phase C) ----------

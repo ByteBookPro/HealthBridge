@@ -17,6 +17,7 @@ import ConnectDeviceCard from '@/src/components/ConnectDeviceCard';
 import { api, type MetricSummary, type Watch, type CategoriesResponse, type MetricAvailabilityResponse } from '@/src/api/client';
 import { useAuth } from '@/src/context/AuthContext';
 import SyncingOverlay from '@/src/components/SyncingOverlay';
+import { useDevice } from '@/src/hooks/useDevice';
 
 // Metric icons mapping
 const METRIC_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
@@ -75,6 +76,7 @@ const CATEGORY_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
 export default function Dashboard() {
   const { user } = useAuth();
   const router = useRouter();
+  const { deviceId } = useDevice();
   const [metrics, setMetrics] = useState<MetricSummary[]>([]);
   const [categories, setCategories] = useState<CategoriesResponse | null>(null);
   const [watches, setWatches] = useState<Watch[]>([]);
@@ -89,7 +91,7 @@ export default function Dashboard() {
         api.metricsAll(),
         api.watches(),
         api.metricsCategories(),
-        api.metricAvailability().catch(() => null),
+        api.metricAvailability(deviceId || undefined).catch(() => null),
       ]);
       setMetrics(m);
       setWatches(w);
@@ -103,7 +105,7 @@ export default function Dashboard() {
         setWatches(w);
       } catch {}
     }
-  }, []);
+  }, [deviceId]);
 
   useEffect(() => { load(); }, [load]);
 

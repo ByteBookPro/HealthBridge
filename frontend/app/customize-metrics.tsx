@@ -10,6 +10,7 @@ import AppText from '@/src/components/AppText';
 import GlassCard from '@/src/components/GlassCard';
 import AuroraBackground from '@/src/components/AuroraBackground';
 import { api, type MetricSummary, type ConnectorOut, type MetricAvailabilityResponse } from '@/src/api/client';
+import { useDevice } from '@/src/hooks/useDevice';
 
 const STORAGE_KEY = '@healthbridge_hidden_metrics';
 
@@ -61,6 +62,7 @@ const METRIC_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
 
 export default function CustomizeMetricsScreen() {
   const router = useRouter();
+  const { deviceId, label: deviceLabel } = useDevice();
   const [metrics, setMetrics] = useState<MetricSummary[]>([]);
   const [hiddenMetrics, setHiddenMetrics] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -68,13 +70,16 @@ export default function CustomizeMetricsScreen() {
   const [availability, setAvailability] = useState<MetricAvailabilityResponse | null>(null);
   const [connectors, setConnectors] = useState<ConnectorOut[]>([]);
   const [pickerMetric, setPickerMetric] = useState<string | null>(null);
+  // primaryScope: 'device' = save the primary against THIS device only,
+  // 'account' = save as the account-global default for every device.
+  const [primaryScope, setPrimaryScope] = useState<'device' | 'account'>('device');
 
   const load = useCallback(async () => {
     try {
       const [data, stored, avail, conns] = await Promise.all([
         api.metricsAll(),
         AsyncStorage.getItem(STORAGE_KEY),
-        api.metricAvailability().catch(() => null),
+        api.metricAvailability(deviceId || undefined).catch(() => null),
         api.connectors().catch(() => [] as ConnectorOut[]),
       ]);
       setMetrics(data);
@@ -88,7 +93,7 @@ export default function CustomizeMetricsScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [deviceId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -101,6 +106,10 @@ export default function CustomizeMetricsScreen() {
     return availability?.metrics?.[metricId]?.primary ?? null;
   };
 
+  const isDeviceSpecific = (metricId: string): boolean => {
+    return availability?.metrics?.[metricId]?.primary_is_device_specific === true;
+  };
+
   const connectedProvidersFor = (metricId: string): ConnectorOut[] => {
     const ids = availability?.metrics?.[metricId]?.connected_providers || [];
     return connectors.filter((c) => ids.includes(c.connector_id));
@@ -108,11 +117,20 @@ export default function CustomizeMetricsScreen() {
 
   const setPrimary = async (metricId: string, connectorId: string) => {
     try {
-      await api.setPrimarySource(metricId, connectorId);
-      const next = await api.metricAvailability();
+      const scopedDevice = primaryScope === 'device' ? (deviceId || undefined) : undefined;
+      await api.setPrimarySource(metricId, connectorId, scopedDevice);
+      const next = await api.metricAvailability(deviceId || undefined);
       setAvailability(next);
     } catch {}
     setPickerMetric(null);
+  };
+
+  const clearDeviceOverride = async (metricId: string) => {
+    try {
+      await api.clearPrimarySource(metricId, deviceId || undefined);
+      const next = await api.metricAvailability(deviceId || undefined);
+      setAvailability(next);
+    } catch {}
   };
 
   const toggleMetric = async (metricId: string) => {
@@ -249,6 +267,51 @@ export default function CustomizeMetricsScreen() {
             </GlassCard>
           </Animated.View>
 
+          {/* Primary-source scope toggle — only meaningful when at least one
+              connector is connected. Lets a shared household account pick
+              different primaries per phone. */}
+          {availability && availability.total_connected > 0 && (
+            <Animated.View entering={FadeInDown.delay(80).duration(400)}>
+              <GlassCard style={styles.scopeCard} testID="primary-scope-card">
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Ionicons name="phone-portrait-outline" size={16} color={theme.colors.teal} />
+                  <AppText size={11} color={theme.colors.textDim} style={{ marginLeft: 8, flex: 1 }}>
+                    Primary source applies to:
+                  </AppText>
+                </View>
+                <View style={styles.scopeRow}>
+                  <Pressable
+                    onPress={() => setPrimaryScope('device')}
+                    style={[styles.scopeBtn, primaryScope === 'device' && styles.scopeBtnActive]}
+                    testID="primary-scope-device"
+                  >
+                    <Ionicons name="hardware-chip-outline" size={12}
+                      color={primaryScope === 'device' ? theme.colors.teal : theme.colors.textDim} />
+                    <AppText size={11} weight="semi" style={{ marginLeft: 6 }}
+                      color={primaryScope === 'device' ? theme.colors.teal : theme.colors.textDim}>
+                      This device
+                    </AppText>
+                    <AppText size={9} color={theme.colors.textMute} style={{ marginLeft: 4 }}>
+                      ({deviceLabel})
+                    </AppText>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setPrimaryScope('account')}
+                    style={[styles.scopeBtn, primaryScope === 'account' && styles.scopeBtnActive]}
+                    testID="primary-scope-account"
+                  >
+                    <Ionicons name="people-outline" size={12}
+                      color={primaryScope === 'account' ? theme.colors.teal : theme.colors.textDim} />
+                    <AppText size={11} weight="semi" style={{ marginLeft: 6 }}
+                      color={primaryScope === 'account' ? theme.colors.teal : theme.colors.textDim}>
+                      All devices
+                    </AppText>
+                  </Pressable>
+                </View>
+              </GlassCard>
+            </Animated.View>
+          )}
+
           {/* Categories */}
           {categoryOrder.map((catId, catIdx) => {
             const catMetrics = metricsByCategory[catId] || [];
@@ -377,6 +440,20 @@ export default function CustomizeMetricsScreen() {
                                   size={10} color={theme.colors.textDim} style={{ marginLeft: 4 }}
                                 />
                               </Pressable>
+                              {isDeviceSpecific(m.metric) && (
+                                <Pressable
+                                  onPress={() => clearDeviceOverride(m.metric)}
+                                  style={styles.deviceTag}
+                                  testID={`metric-device-tag-${m.metric}`}
+                                  hitSlop={4}
+                                >
+                                  <Ionicons name="hardware-chip-outline" size={9} color={theme.colors.teal} />
+                                  <AppText size={9} weight="semi" color={theme.colors.teal} style={{ marginLeft: 3 }}>
+                                    {deviceLabel}
+                                  </AppText>
+                                  <Ionicons name="close" size={10} color={theme.colors.textMute} style={{ marginLeft: 4 }} />
+                                </Pressable>
+                              )}
                             </View>
                           )}
                           {!isLocked && pickerMetric === m.metric && (
@@ -556,5 +633,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10, paddingVertical: 8,
     borderRadius: 8,
     borderWidth: 1, borderColor: 'transparent',
+  },
+  scopeCard: {
+    padding: theme.space.md,
+    marginBottom: theme.space.md,
+  },
+  scopeRow: {
+    flexDirection: 'row', gap: 8, marginTop: 10,
+  },
+  scopeBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 10, paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1, borderColor: theme.colors.border,
+  },
+  scopeBtnActive: {
+    backgroundColor: 'rgba(45,212,191,0.14)',
+    borderColor: 'rgba(45,212,191,0.4)',
+  },
+  deviceTag: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 6, paddingVertical: 3, marginLeft: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(45,212,191,0.10)',
+    borderWidth: 1, borderColor: 'rgba(45,212,191,0.3)',
   },
 });

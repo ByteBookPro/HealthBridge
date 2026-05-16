@@ -197,6 +197,10 @@ export default function Watches() {
         visible={!!proximityWatch}
         watchId={proximityWatch?.id ?? null}
         watchName={proximityWatch?.model || 'Watch'}
+        nameHint={proximityWatch?.platform === 'apple' ? 'Apple Watch'
+          : proximityWatch?.platform === 'samsung' ? 'Galaxy'
+          : proximityWatch?.platform === 'google' ? 'Pixel Watch'
+          : undefined}
         onClose={() => setProximityWatch(null)}
         onProceed={handleProximityProceed}
       />

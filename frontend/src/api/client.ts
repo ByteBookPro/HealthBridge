@@ -286,13 +286,31 @@ export const api = {
     request<ConnectorOut>(`/connectors/${connector_id}/connect`, { method: 'POST' }),
   disconnectConnector: (connector_id: string) =>
     request<ConnectorOut>(`/connectors/${connector_id}/disconnect`, { method: 'POST' }),
-  metricAvailability: () => request<MetricAvailabilityResponse>('/metrics/availability'),
-  setPrimarySource: (metric: string, connector_id: string) =>
-    request<{ ok: boolean }>('/connectors/primary', {
-      method: 'POST', body: JSON.stringify({ metric, connector_id }),
+  bulkConnect: (platforms?: string[], connector_ids?: string[]) =>
+    request<ConnectorOut[]>('/connectors/connect-all', {
+      method: 'POST', body: JSON.stringify({ platforms, connector_ids }),
     }),
+  metricAvailability: (device_id?: string) => {
+    const q = device_id ? `?device_id=${encodeURIComponent(device_id)}` : '';
+    return request<MetricAvailabilityResponse>(`/metrics/availability${q}`);
+  },
+  setPrimarySource: (metric: string, connector_id: string, device_id?: string) =>
+    request<{ ok: boolean }>('/connectors/primary', {
+      method: 'POST', body: JSON.stringify({ metric, connector_id, device_id }),
+    }),
+  clearPrimarySource: (metric: string, device_id?: string) => {
+    const q = device_id ? `?device_id=${encodeURIComponent(device_id)}` : '';
+    return request<{ ok: boolean }>(`/connectors/primary/${metric}${q}`, { method: 'DELETE' });
+  },
   watchProximity: (watch_id: string) =>
     request<WatchProximity>(`/watches/${watch_id}/proximity`, { method: 'POST' }),
+
+  // Device profiles (per-device primary support)
+  registerDevice: (device_id: string, label: string, platform: 'ios' | 'android' | 'web') =>
+    request<{ ok: boolean; device_id: string }>('/devices/register', {
+      method: 'POST', body: JSON.stringify({ device_id, label, platform }),
+    }),
+  listDevices: () => request<DeviceProfile[]>('/devices'),
 };
 
 export type ConnectorOut = {
@@ -311,11 +329,21 @@ export type MetricAvailability = {
   connected_providers: string[];
   available: boolean;
   primary: string | null;
+  primary_is_device_specific?: boolean;
 };
 
 export type MetricAvailabilityResponse = {
   metrics: Record<string, MetricAvailability>;
   total_connected: number;
+  device_id?: string | null;
+};
+
+export type DeviceProfile = {
+  device_id: string;
+  label: string;
+  platform: 'ios' | 'android' | 'web';
+  first_seen_at?: string;
+  last_seen_at?: string;
 };
 
 export type WatchProximity = {
