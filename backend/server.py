@@ -2082,17 +2082,30 @@ async def admin_health(user=Depends(admin_only)):
     out["checks"]["stripe"] = {"ok": True, "mode": stripe_mode}
     # JWT
     out["checks"]["jwt"] = {"ok": bool(JWT_SECRET) and len(JWT_SECRET) >= 16}
-    # Indexes (best-effort)
+    # Indexes — verify expected indexes exist (read-only, no side effects)
     try:
-        await db.users.create_index("email", unique=True)
-        await db.users.create_index("id", unique=True)
-        await db.metric_summaries.create_index([("user_id", 1), ("metric", 1)])
-        await db.sync_events.create_index([("user_id", 1), ("created_at", -1)])
-        await db.connectors.create_index([("user_id", 1), ("connector_id", 1)])
-        await db.metric_primary.create_index([("user_id", 1), ("device_id", 1), ("metric", 1)])
-        await db.user_devices.create_index([("user_id", 1), ("device_id", 1)])
-        out["checks"]["indexes"] = {"ok": True}
+        expected = {
+            "users": ["email_1", "id_1"],
+            "metric_summaries": ["user_id_1_metric_1"],
+            "sync_events": ["user_id_1_created_at_-1"],
+            "connectors": ["user_id_1_connector_id_1"],
+            "metric_primary": ["user_id_1_device_id_1_metric_1"],
+            "user_devices": ["user_id_1_device_id_1"],
+        }
+        missing: List[str] = []
+        for coll, names in expected.items():
+            existing = await db[coll].list_indexes().to_list(50)
+            existing_names = {i.get("name") for i in existing}
+            for n in names:
+                if n not in existing_names:
+                    missing.append(f"{coll}.{n}")
+        if missing:
+            out["ok"] = False
+            out["checks"]["indexes"] = {"ok": False, "missing": missing}
+        else:
+            out["checks"]["indexes"] = {"ok": True}
     except Exception as e:  # noqa: BLE001
+        out["ok"] = False
         out["checks"]["indexes"] = {"ok": False, "error": str(e)[:200]}
     out["timestamp"] = datetime.now(timezone.utc).isoformat()
     return out
@@ -2145,8 +2158,11 @@ async def admin_delete_user(user_id: str, user=Depends(admin_only)):
     ]
     for coll_name in collections_to_clean:
         await db[coll_name].delete_many({"user_id": user_id})
+    # Tokens / resets keyed by email (not user_id)
+    await db.password_resets.delete_many({"email": target["email"]})
     await db.users.delete_one({"id": user_id})
-    log.info(f"Admin {user['email']} deleted user {target['email']}")
+    # GDPR: log only the user_id, not the email (PII)
+    log.info(f"Admin {user['id']} deleted user {user_id}")
     return {"ok": True, "deleted_user_id": user_id, "deleted_email": target["email"]}
 
 
@@ -2189,6 +2205,12 @@ async def on_startup():
     await db.notif_bridge_log.create_index([("user_id", 1), ("created_at", -1)])
     await db.goals.create_index([("user_id", 1), ("metric", 1)], unique=True)
     await db.insights.create_index([("user_id", 1), ("created_at", -1)])
+    # Phase C indexes — connectors / per-device primary / device profiles
+    await db.connectors.create_index([("user_id", 1), ("connector_id", 1)], unique=True)
+    await db.metric_primary.create_index(
+        [("user_id", 1), ("device_id", 1), ("metric", 1)], unique=True)
+    await db.user_devices.create_index(
+        [("user_id", 1), ("device_id", 1)], unique=True)
     await seed_admin_user()
     await seed_demo_user()
     log.info("HealthBridge Vault API v2 ready")

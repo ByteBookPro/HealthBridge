@@ -235,6 +235,76 @@ class TestAdminHealth:
         mode = d["checks"]["stripe"].get("mode")
         assert mode in ("live", "test", "dev_fallback"), f"Unexpected stripe mode: {mode}"
 
+    def test_top_level_ok_true(self, admin_headers):
+        """Top-level health.ok must be true when all child checks are ok."""
+        d = requests.get(f"{BASE_URL}/api/admin/health", headers=admin_headers, timeout=15).json()
+        assert d["ok"] is True, f"Top-level ok should be True, got {d['ok']}; checks={d['checks']}"
+        for name, chk in d["checks"].items():
+            assert chk["ok"] is True, f"Check {name} not ok: {chk}"
+
+    def test_idempotent_no_side_effects(self, admin_headers):
+        """Calling /admin/health twice in a row must not error or mutate index state."""
+        r1 = requests.get(f"{BASE_URL}/api/admin/health", headers=admin_headers, timeout=15)
+        r2 = requests.get(f"{BASE_URL}/api/admin/health", headers=admin_headers, timeout=15)
+        assert r1.status_code == 200 and r2.status_code == 200
+        d1, d2 = r1.json(), r2.json()
+        assert d1["ok"] is True and d2["ok"] is True
+        assert d1["checks"]["indexes"]["ok"] is True
+        assert d2["checks"]["indexes"]["ok"] is True
+        # Same set of checks each time
+        assert set(d1["checks"].keys()) == set(d2["checks"].keys())
+
+
+# ---------- GDPR cascade tests (v8.1 — password_resets by email) ----------
+
+class TestGdprDeleteCascade:
+    """GDPR cascade — verify that DELETE /admin/users/{id} also removes
+    leftover password_resets so the deleted user cannot be 'revived' via
+    a previously-issued reset token."""
+
+    def test_delete_user_wipes_password_resets(self, admin_headers, fresh_user):
+        uid = fresh_user["user_id"]
+        email = fresh_user["email"]
+
+        # Trigger the correct forgot-password endpoint to create a reset row
+        fr = requests.post(
+            f"{BASE_URL}/api/auth/password/forgot",
+            json={"email": email},
+            timeout=15,
+        )
+        assert fr.status_code == 200, f"forgot failed: {fr.status_code} {fr.text[:200]}"
+        token = fr.json().get("reset_token_dev_only")
+        assert token, f"No dev token returned: {fr.json()}"
+
+        # Sanity: token should be usable BEFORE delete (don't actually consume it yet —
+        # we want to verify wiped AFTER admin delete). So just verify pre-delete that the
+        # reset row exists by re-checking /auth/password/reset with a deliberately-bogus
+        # new password — actually we'll just assert it works post-delete check.
+
+        # DELETE the user
+        dr = requests.delete(
+            f"{BASE_URL}/api/admin/users/{uid}",
+            headers=admin_headers,
+            timeout=20,
+        )
+        assert dr.status_code == 200, f"DELETE failed: {dr.status_code} {dr.text[:200]}"
+
+        # User is gone
+        gr = requests.get(f"{BASE_URL}/api/admin/users/{uid}", headers=admin_headers, timeout=15)
+        assert gr.status_code == 404
+
+        # CRITICAL GDPR check: attempt to use the stale reset token.
+        # If cascade truly wiped password_resets, the token must be invalid (400).
+        rr = requests.post(
+            f"{BASE_URL}/api/auth/password/reset",
+            json={"token": token, "new_password": "NewPass1234!"},
+            timeout=15,
+        )
+        assert rr.status_code == 400, (
+            f"Expected 400 (token wiped on user delete) but got {rr.status_code}: {rr.text[:300]}. "
+            "This means password_resets cascade is broken — stale reset tokens survive user deletion."
+        )
+
 
 # ---------- /admin/users/{user_id} (GET detail) ----------
 

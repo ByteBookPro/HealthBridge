@@ -428,24 +428,31 @@ export default function AdminPortal() {
                 <AppText size={11} color={theme.colors.textDim} weight="med" style={styles.section}>
                   System self-test
                 </AppText>
-                <View style={styles.healthSummary}>
-                  <Ionicons
-                    name={health?.ok ? 'checkmark-circle' : 'alert-circle'}
-                    size={28}
-                    color={health?.ok ? theme.colors.emerald : theme.colors.danger}
-                  />
-                  <View style={{ marginLeft: 12, flex: 1 }}>
-                    <AppText weight="heading" size={18}>
-                      {health?.ok ? 'All systems operational' : 'Issues detected'}
-                    </AppText>
-                    <AppText size={10} color={theme.colors.textDim} style={{ marginTop: 2 }}>
-                      {health?.timestamp ? `Last checked ${new Date(health.timestamp).toLocaleString()}` : '—'}
-                    </AppText>
-                  </View>
-                  <Pressable onPress={loadAll} hitSlop={6}>
-                    <Ionicons name="refresh" size={20} color={theme.colors.textDim} />
-                  </Pressable>
-                </View>
+                {(() => {
+                  const allOk = health
+                    ? Object.values(health.checks).every((c: any) => c?.ok === true) && health.ok === true
+                    : false;
+                  return (
+                    <View style={styles.healthSummary}>
+                      <Ionicons
+                        name={allOk ? 'checkmark-circle' : 'alert-circle'}
+                        size={28}
+                        color={allOk ? theme.colors.emerald : theme.colors.danger}
+                      />
+                      <View style={{ marginLeft: 12, flex: 1 }}>
+                        <AppText weight="heading" size={18}>
+                          {allOk ? 'All systems operational' : 'Issues detected'}
+                        </AppText>
+                        <AppText size={10} color={theme.colors.textDim} style={{ marginTop: 2 }}>
+                          {health?.timestamp ? `Last checked ${new Date(health.timestamp).toLocaleString()}` : '—'}
+                        </AppText>
+                      </View>
+                      <Pressable onPress={loadAll} hitSlop={6}>
+                        <Ionicons name="refresh" size={20} color={theme.colors.textDim} />
+                      </Pressable>
+                    </View>
+                  );
+                })()}
                 {health && Object.entries(health.checks).map(([k, v]: any, i) => (
                   <View key={k} style={[styles.healthRow, i !== Object.entries(health.checks).length - 1 && styles.divider]} testID={`admin-health-${k}`}>
                     <Ionicons

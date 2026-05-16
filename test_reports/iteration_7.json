@@ -1,0 +1,51 @@
+{
+  "summary": "Iteration_6 re-verification. /api/admin/health is now FULLY GREEN: all 5 checks (mongo, emergent_llm_key, stripe, jwt, indexes) ok=true with top-level ok=true. The list_indexes() refactor is read-only and idempotent (verified by 2 back-to-back calls + dedicated test_idempotent_no_side_effects). Startup-hook creates the 3 Phase C indexes (connectors.user_id_1_connector_id_1, metric_primary.user_id_1_device_id_1_metric_1, user_devices.user_id_1_device_id_1) with unique=True — admin/health confirms presence of all 6 expected index groups. PII removal from admin_delete_user INFO log verified at server.py:2165 (logs only user_id, not email). REGRESSION: all 38 original iteration_6 admin-console cases still pass (40/40 of the existing pre-cascade tests green). NEW: added 3 tests (test_top_level_ok_true, test_idempotent_no_side_effects, test_delete_user_wipes_password_resets) — first two pass; the GDPR cascade test FAILS, exposing a real second bug introduced by iteration_6's incomplete fix. 40 passed, 1 failed (41 total).",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "DELETE /api/admin/users/{user_id}",
+        "issue": "GDPR password_resets cascade is BROKEN. server.py:2162 does `await db.password_resets.delete_many({'email': target['email']})` — but the password_resets collection schema (see forgot_password() at server.py:629-642) stores documents with key `user_id`, NOT `email`. Therefore the delete_many matches ZERO documents and stale reset tokens survive user deletion. PROOF: create user → POST /auth/password/forgot → DELETE /admin/users/{uid} → POST /auth/password/reset with the stale token returns 200 ok=true (should be 400). Fix: change to `await db.password_resets.delete_many({'user_id': user_id})` OR add 'password_resets' to the collections_to_clean list (which already iterates with {'user_id': user_id}).",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": [
+      {
+        "endpoint": "DELETE /api/admin/users/{user_id}",
+        "issue": "Response body still returns `deleted_email` — minor PII leak in API response even though INFO log was cleaned. Consider returning only deleted_user_id to be consistent with the 'no PII in logs' GDPR change."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_healthbridge_v8_admin_console.py",
+    "/app/test_reports/pytest/pytest_v8_iter7_results.xml"
+  ],
+  "action_items": [
+    "FIX server.py:2162 — replace `db.password_resets.delete_many({'email': target['email']})` with `db.password_resets.delete_many({'user_id': user_id})`. The schema (server.py:635-639) inserts {token, user_id, expires_at, used}, not email. After fix, re-run TestGdprDeleteCascade to confirm 41/41 green.",
+    "OPTIONAL: drop `deleted_email` from the response body of admin_delete_user (server.py:2166) since INFO log was just cleaned of email PII — keep API consistent."
+  ],
+  "critical_code_review_comments": [
+    "The iteration_6 cascade fix demonstrates a class of bug: code was patched based on assumed schema (`email`) without confirming actual stored fields. Recommend adding a one-time data-shape sanity test that inserts a doc into each user-keyed collection and asserts the cleanup loop in admin_delete_user empties them all. This is the same recommendation from iteration_6 code review that has not yet landed.",
+    "server.py is now 2222 lines. Still well over the 700-line threshold. The admin endpoints (now 8 of them) still belong in routers/admin.py — not done yet from iteration_6.",
+    "admin_health() expected-indexes dict (server.py:2087-2094) duplicates index NAMES that are implicitly derived in on_startup. Risk of drift if a startup index spec is renamed. Recommend defining a single INDEX_SPEC dict at module top and using it in both places (DRY)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_healthbridge_v8_admin_console.py (added TestGdprDeleteCascade::test_delete_user_wipes_password_resets, TestAdminHealth::test_top_level_ok_true, TestAdminHealth::test_idempotent_no_side_effects)",
+    "/app/test_reports/iteration_7.json (created)",
+    "/app/test_reports/pytest/pytest_v8_iter7_results.xml (regenerated)"
+  ],
+  "success_rate": {
+    "backend": "97.5% (40/41) — sole failure is the new password_resets cascade test which exposes a real iteration_6 regression",
+    "frontend": "not tested this iteration (per scope: backend only)"
+  },
+  "test_credentials": "admin@healthbridge.app / ySk4rWp4nSn5KsB8WvI4iF (verified working).",
+  "seed_data_creation": "Per-test TEST_v8_<uuid>@example.com users; TestGdprDeleteCascade creates 1 user + 1 password_resets row then deletes the user (user gone, password_resets row leaks). TestAdminDeleteUser::test_delete_non_admin_with_cascade creates 1 user + 1 device + 1 connector then deletes.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "BASE_URL=https://b5756d38-6d5c-4694-ae0a-e29e724ded9b.preview.emergentagent.com. v8 suite is now 41 tests (38 original + 3 added in iter7). After main agent fixes admin_delete_user to use {'user_id': user_id} for password_resets, re-run `pytest backend/tests/test_healthbridge_v8_admin_console.py -v` — should be 41/41. The forgot endpoint is `/api/auth/password/forgot` (NOT `/api/auth/forgot`); reset is `/api/auth/password/reset`; both documented at server.py:629 and 645. The dev-only reset token comes back in the forgot response as `reset_token_dev_only`.",
+  "rca_of_issue": "BUG: DELETE /api/admin/users/{user_id} fails to wipe password_resets — stale tokens survive. REPRO: (1) POST /api/auth/register → {email, user_id}. (2) POST /api/auth/password/forgot {email} → returns reset_token_dev_only=T. (3) DELETE /api/admin/users/{user_id} as admin → 200 ok. (4) POST /api/auth/password/reset {token: T, new_password: 'x'} → returns 200 ok=true (EXPECTED 400 'Invalid or expired reset token'). ROOT CAUSE: server.py:2162 does `db.password_resets.delete_many({'email': target['email']})`. But forgot_password() at server.py:635-639 inserts {token, user_id, expires_at, used} — NO email field. Therefore the delete_many matches zero docs and the row leaks. The reset endpoint at server.py:646-657 then happily validates the token and even runs `db.users.update_one({'id': rec['user_id']}, ...)` — which is a no-op for the deleted user but the API still returns 200. FIX: `await db.password_resets.delete_many({'user_id': user_id})` — or add 'password_resets' to collections_to_clean which already iterates {'user_id': user_id}. IMPACT: this is the second time iteration_6's claimed fix needed re-verification — first /admin/health indexes (now correctly fixed), now this. Recommend a more systematic test: a single fixture that for every user-keyed collection inserts a doc, runs admin delete, and asserts zero residual rows."
+}
