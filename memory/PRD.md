@@ -220,7 +220,14 @@
 
 ## 8. Changelog
 
-### v5.0 (Current - May 2026)
+### v5.1 (May 2026 — Phase C complete)
+- ✅ Watch proximity scan (animated radar) before any Connect Watch action — `POST /api/watches/{id}/proximity`
+- ✅ Connectors backend: 9 connectors auto-seeded disconnected per user; connect/disconnect via `/api/connectors/*`
+- ✅ Per-metric primary data source picker — `POST /api/connectors/primary` + UI on `/customize-metrics`
+- ✅ Metric availability gating — `GET /api/metrics/availability`; dashboard cards & customize-metrics toggles lock until a connected provider exists
+- ✅ Animated SyncingOverlay during connect & pull-to-refresh
+
+### v5.0 (May 2026)
 - ✅ Redesigned onboarding page with animations
 - ✅ 33 comprehensive health metrics (was 8)
 - ✅ 5 metric categories (Activity, Exercise, Nutrition, Body, Vitals)
