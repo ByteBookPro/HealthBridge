@@ -2158,8 +2158,8 @@ async def admin_delete_user(user_id: str, user=Depends(admin_only)):
     ]
     for coll_name in collections_to_clean:
         await db[coll_name].delete_many({"user_id": user_id})
-    # Tokens / resets keyed by email (not user_id)
-    await db.password_resets.delete_many({"email": target["email"]})
+    # Tokens / resets — password_resets is keyed by user_id (see forgot_password())
+    await db.password_resets.delete_many({"user_id": user_id})
     await db.users.delete_one({"id": user_id})
     # GDPR: log only the user_id, not the email (PII)
     log.info(f"Admin {user['id']} deleted user {user_id}")
