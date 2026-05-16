@@ -220,6 +220,15 @@
 
 ## 8. Changelog
 
+### v5.3 (May 2026 — Admin console expansion + prod hardening)
+- ✅ Admin: 3 new tabs — **Connectors** (per-app adoption % with progress bars + device-profile distribution), **Engagement** (DAU/WAU/MAU, signups, churn signals), **System Health** (read-only mongo/llm/stripe/jwt/indexes self-test + Stripe billing-mode card)
+- ✅ Admin: user detail drawer — tapping any user opens a slide-up modal with connected apps, devices, recent syncs, goals + a red GDPR delete button (blocked for admins themselves)
+- ✅ `DELETE /api/admin/users/{user_id}` — GDPR right-to-erase that wipes 16 collections + password_resets keyed by user_id; refuses to delete self with 400; logs only user_id (no email PII)
+- ✅ Phase C indexes (connectors, metric_primary, user_devices) added to the startup hook with unique=True
+- ✅ Idempotent `/admin/health` — switched from `create_index` (mutating + conflict-prone) to `list_indexes` verification
+- ✅ Frontend health tab: top-level OK badge now aggregates every child check (not just the top-level field)
+- ✅ Backend test suite expanded to 79+ cases; all green across 7 testing iterations
+
 ### v5.2 (May 2026 — Phase C polish)
 - ✅ Bulk "Connect all available" affordance on /app-connectors (`POST /api/connectors/connect-all`) — filters by platform on native, connects every disconnected one on web
 - ✅ Per-device primary-source overrides — `device_id` column on `metric_primary`, scoped writes via `POST /api/connectors/primary` body; `GET /api/metrics/availability?device_id=...` returns per-device-overridden primaries
