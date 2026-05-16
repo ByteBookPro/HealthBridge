@@ -60,7 +60,19 @@ log = logging.getLogger("healthbridge")
 
 # ---------- Models ----------
 PlatformLiteral = Literal["apple", "samsung", "google", "cloud"]
-MetricLiteral = Literal["steps", "heart_rate", "sleep", "workouts", "spo2", "ecg", "calories", "stand"]
+MetricLiteral = Literal[
+    # ACTIVITY
+    "steps", "distance", "active_minutes", "floors", "calories", "stand",
+    # EXERCISE
+    "workouts", "workout_count", "vo2_max", "training_load", "recovery_time",
+    # NUTRITION
+    "calorie_intake", "protein", "carbs", "fat", "water", "fiber",
+    # BODY
+    "weight", "bmi", "body_fat", "muscle_mass", "sleep", "sleep_quality",
+    # VITALS
+    "heart_rate", "resting_hr", "hrv", "blood_pressure_sys", "blood_pressure_dia",
+    "spo2", "respiratory_rate", "body_temp", "ecg", "stress",
+]
 
 
 class RegisterIn(BaseModel):
