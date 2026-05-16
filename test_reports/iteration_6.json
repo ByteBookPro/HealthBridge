@@ -1,0 +1,54 @@
+{
+  "summary": "Admin console expansion (Phase D) — backend 37/38 pytest green; frontend 7/7 admin tabs render with zero runtime errors. NEW SUITE: /app/backend/tests/test_healthbridge_v8_admin_console.py (38 cases). PASS: all auth guards (401/403 across 6 endpoints), /admin/connectors/stats (9 expected connectors, sorted DESC, adoption_pct in range, full schema), /admin/devices/stats (device-register increments total), /admin/engagement (8 numeric fields, no div-by-zero), /admin/health (mongo/jwt/stripe-mode/llm-key all OK), /admin/users/{id} detail (connectors_total=9 for seeded user, 404 on unknown), DELETE self-block (400 'Admins cannot delete their own account'), DELETE non-admin with cascade (200 + user gone from /admin/users + GET returns 404). Regression smoke 8/8 green. FRONTEND: all 7 admin-tab-* present (overview/users/connectors/engagement/broadcast/audit/health); admin-connectors-card has 9 admin-connector-* rows with adoption bars; admin-device-stats has 4 stat cards (Total 18, Multi-device 17, Max/user 2, Avg/user 1.06); admin-engagement-card has 6 stat cards + churn section; admin-health-card lists 5 admin-health-* rows + Stripe billing card; admin-user-0 row opens admin-user-detail-modal with Connected apps / Devices / Recent syncs sections and a red Delete button — admin-user-detail-close dismisses it. 1 BACKEND BUG and 1 minor UI inconsistency surfaced — both stem from the same root cause.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "GET /api/admin/health",
+        "issue": "indexes.ok always returns false. Root cause: server.py:2089 inside admin_health() calls await db.metric_summaries.create_index([('user_id',1),('metric',1)]) WITHOUT unique=True, while on_startup (server.py:2181) creates the same compound key WITH unique=True. MongoDB auto-generates the same index name 'user_id_1_metric_1' for both, triggering 'An existing index has the same name as the requested index ... Requested index has different options'. Fix: pass unique=True (or call create_index with the exact same options as startup, ideally extract a single helper).",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Admin → Health tab (SYSTEM SELF-TEST)",
+        "issues": [
+          "Header shows green check + 'All systems operational' even when the indexes row is red. Backend sets top-level out.ok=True for non-mongo failures, but the frontend should aggregate checks[*].ok and display amber/red when any child is failing."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_healthbridge_v8_admin_console.py",
+    "/app/test_reports/pytest/pytest_v8_results.xml"
+  ],
+  "action_items": [
+    "FIX server.py admin_health(): pass unique=True to db.metric_summaries.create_index, OR remove the re-creation block and only verify via listIndexes (the startup hook already creates all indexes). Either resolves indexes.ok=false.",
+    "FIX admin/index.tsx Health card: derive overall status from Object.values(health.checks).every(c => c.ok) rather than only from top-level health.ok — otherwise the green 'All systems operational' badge hides legitimate failures (as seen with indexes currently false)."
+  ],
+  "critical_code_review_comments": [
+    "server.py is now 2200 lines (was 2019 in v5). Still well over the 700-line threshold. Strongly recommend splitting admin endpoints into routers/admin.py — at least the 7 new ones added this iteration belong in their own module.",
+    "/admin/health re-runs create_index() at every poll. Even when fixed for the unique= mismatch, this is wasteful — Mongo would still issue a server round-trip for each index. Better: use db.<coll>.list_indexes() and verify expected names exist; faster and side-effect-free.",
+    "/admin/users/{user_id} DELETE cascade list (server.py:2139) does NOT include all collections that may carry user data — missing examples: password_resets (user_email field?), stripe_events, audit logs, refresh_tokens (if any). Add a unit test that asserts ZERO documents remain for the deleted user_id across EVERY collection with a user_id index — this is a true GDPR requirement.",
+    "admin_delete_user logs the deleted email at INFO. For GDPR compliance, consider not logging the PII (or log only the user_id and a hash of the email)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_healthbridge_v8_admin_console.py (created — 38 pytest cases covering 6 new admin endpoints + auth guards + regression)",
+    "/app/test_reports/iteration_6.json (created)",
+    "/app/test_reports/pytest/pytest_v8_results.xml (generated)"
+  ],
+  "success_rate": {
+    "backend": "97% (37/38) — sole failure is the /admin/health indexes bug",
+    "frontend": "100% — all 7 tabs render, all expected data-testids present, modal open/close works, zero runtime errors, zero console errors"
+  },
+  "test_credentials": "admin@healthbridge.app / ySk4rWp4nSn5KsB8WvI4iF (verified). Test users created on the fly with email pattern TEST_v8_<uuid>@example.com (backend lowercases on store/return — the test accounts for this).",
+  "seed_data_creation": "Each TestAdminAuthGuards/Users/Delete test creates 1 fresh user (TEST_v8_*) via /auth/register. test_delete_non_admin_with_cascade additionally registers 1 device and connects apple_health for that user, then deletes — verified gone. No persistent seed data left behind (all TEST_v8_* users either deleted by their own test or remain as benign rows with no PII).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "BASE_URL=https://b5756d38-6d5c-4694-ae0a-e29e724ded9b.preview.emergentagent.com. v8 suite covers the new admin console (connectors/devices/engagement/health/user-detail/delete). The ONE bug is /admin/health indexes.ok=false — re-running the v8 suite after E1's fix should yield 38/38. Frontend pre-seeding pattern: navigate to BASE first → fetch('/api/auth/login') from browser context → localStorage.setItem('hbv_access_token', JSON.stringify(token)) → navigate to /admin. The frontend stores the token as a JSON-encoded string. To click user rows use [data-testid=admin-user-{i}] starting at 0. Modal has admin-user-detail-modal/close/delete testids. Devices/Connectors lists nested inside modal use plain text labels (no per-item testid yet — could be added).",
+  "rca_of_issue": "BUG: /api/admin/health → checks.indexes.ok = false (always). REPRO: GET /api/admin/health with admin JWT → 'indexes': {'ok': false, 'error': 'An existing index has the same name as the requested index. When index names are not specified, they are auto generated and can cause conflicts. ... Requested index: { v ...'}. ROOT CAUSE: server.py:2089 (admin_health) calls `db.metric_summaries.create_index([('user_id',1),('metric',1)])` without unique=True. Server.py:2181 (on_startup) creates the same compound key WITH unique=True. Mongo auto-derives the same default name 'user_id_1_metric_1' for both — when admin_health tries to re-create with different options, Mongo raises IndexOptionsConflict (error 85). FIX: pass `unique=True` to the create_index call in admin_health (preferred to keep startup and self-test in sync), or — better — refactor: define INDEX_SPEC at module top and use it in BOTH on_startup and admin_health. SIDE EFFECT: the frontend's 'All systems operational' green badge is misleading while indexes is red because backend out['ok'] is not flipped to false for non-mongo failures (server.py:2061-2098) — fix the UI to compute aggregate from checks[*].ok."
+}

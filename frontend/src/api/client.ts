@@ -234,6 +234,14 @@ export const api = {
     request<{ recipients: number; sent: number }>('/admin/broadcast', {
       method: 'POST', body: JSON.stringify({ title, body, data }) }),
   adminAudit: () => request<{ sync_events: any[]; notifications: any[] }>('/admin/audit'),
+  adminBillingHealth: () => request<any>('/admin/billing/health'),
+  adminConnectorStats: () => request<{ connectors: AdminConnectorStat[] }>('/admin/connectors/stats'),
+  adminDeviceStats: () => request<AdminDeviceStats>('/admin/devices/stats'),
+  adminEngagement: () => request<AdminEngagement>('/admin/engagement'),
+  adminSystemHealth: () => request<AdminHealthReport>('/admin/health'),
+  adminUserDetail: (user_id: string) => request<AdminUserDetail>(`/admin/users/${user_id}`),
+  adminDeleteUser: (user_id: string) =>
+    request<{ ok: boolean; deleted_email: string }>(`/admin/users/${user_id}`, { method: 'DELETE' }),
 
   // Migration wizard
   migrateStart: (source: string, target: string, range_days = 90, metrics?: string[]) =>
@@ -352,4 +360,46 @@ export type WatchProximity = {
   rssi: number;
   distance_m: number;
   scanned_at: string;
+};
+
+export type AdminConnectorStat = {
+  connector_id: string;
+  name: string;
+  icon: string;
+  color: string;
+  total_seats: number;
+  connected_seats: number;
+  adoption_pct: number;
+};
+
+export type AdminDeviceStats = {
+  total_devices: number;
+  users_with_devices: number;
+  max_devices_per_user: number;
+  avg_devices_per_user: number;
+  platforms: { platform: string; count: number }[];
+};
+
+export type AdminEngagement = {
+  dau: number; wau: number; mau: number;
+  new_signups_24h: number; new_signups_7d: number;
+  wau_dau_ratio: number;
+  scheduled_to_churn: number;
+  churn_pct: number;
+};
+
+export type AdminHealthReport = {
+  ok: boolean;
+  checks: Record<string, { ok: boolean; [k: string]: any }>;
+  timestamp: string;
+};
+
+export type AdminUserDetail = {
+  user: User;
+  watches: any[];
+  connectors_connected: any[];
+  connectors_total: number;
+  devices: DeviceProfile[];
+  recent_syncs: any[];
+  goals: any[];
 };

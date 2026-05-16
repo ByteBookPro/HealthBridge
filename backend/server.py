@@ -1969,6 +1969,187 @@ async def admin_billing_health(user=Depends(admin_only)):
     return info
 
 
+@api.get("/admin/connectors/stats")
+async def admin_connectors_stats(user=Depends(admin_only)):
+    """Adoption breakdown per connector — how many users have each connector
+    connected. Used by the Admin → Connectors tab to spot under-performing
+    integrations and prioritize bug fixes."""
+    pipeline = [
+        {"$group": {
+            "_id": "$connector_id",
+            "total": {"$sum": 1},
+            "connected": {"$sum": {"$cond": [{"$eq": ["$connected", True]}, 1, 0]}},
+        }},
+        {"$sort": {"connected": -1}},
+    ]
+    docs = await db.connectors.aggregate(pipeline).to_list(50)
+    by_id = {c["connector_id"]: c for c in CONNECTOR_TEMPLATE}
+    out = []
+    for d in docs:
+        meta = by_id.get(d["_id"], {})
+        out.append({
+            "connector_id": d["_id"],
+            "name": meta.get("name", d["_id"]),
+            "icon": meta.get("icon", "apps"),
+            "color": meta.get("color", "#9CA3AF"),
+            "total_seats": d["total"],
+            "connected_seats": d["connected"],
+            "adoption_pct": round((d["connected"] / d["total"]) * 100, 1) if d["total"] else 0,
+        })
+    return {"connectors": out}
+
+
+@api.get("/admin/devices/stats")
+async def admin_devices_stats(user=Depends(admin_only)):
+    """Device profile distribution — answers 'how many of our users are
+    multi-device households'."""
+    total_devices = await db.user_devices.count_documents({})
+    pipeline = [
+        {"$group": {"_id": "$user_id", "count": {"$sum": 1}}},
+        {"$group": {"_id": None,
+                    "users_with_devices": {"$sum": 1},
+                    "max_devices": {"$max": "$count"},
+                    "avg_devices": {"$avg": "$count"}}},
+    ]
+    agg = await db.user_devices.aggregate(pipeline).to_list(1)
+    summary = agg[0] if agg else {"users_with_devices": 0, "max_devices": 0, "avg_devices": 0}
+    platform_breakdown = await db.user_devices.aggregate([
+        {"$group": {"_id": "$platform", "count": {"$sum": 1}}},
+    ]).to_list(10)
+    return {
+        "total_devices": total_devices,
+        "users_with_devices": summary.get("users_with_devices", 0),
+        "max_devices_per_user": summary.get("max_devices", 0),
+        "avg_devices_per_user": round(summary.get("avg_devices", 0) or 0, 2),
+        "platforms": [{"platform": p["_id"], "count": p["count"]} for p in platform_breakdown],
+    }
+
+
+@api.get("/admin/engagement")
+async def admin_engagement(user=Depends(admin_only)):
+    """Active-user funnel: signups, DAU, WAU, MAU, churn. The signal admins
+    care about most when triaging product health."""
+    now = datetime.now(timezone.utc)
+    day_ago = now - timedelta(hours=24)
+    week_ago = now - timedelta(days=7)
+    month_ago = now - timedelta(days=30)
+
+    async def distinct_user_count(window_start: datetime) -> int:
+        ids = await db.sync_events.distinct("user_id", {"created_at": {"$gte": window_start}})
+        return len(ids)
+
+    dau = await distinct_user_count(day_ago)
+    wau = await distinct_user_count(week_ago)
+    mau = await distinct_user_count(month_ago)
+    new_24h = await db.users.count_documents({"created_at": {"$gte": day_ago}})
+    new_7d = await db.users.count_documents({"created_at": {"$gte": week_ago}})
+    cancelled_active = await db.users.count_documents({
+        "subscription.cancel_at_period_end": True,
+        "subscription.status": "active",
+    })
+    pro_users = await db.users.count_documents({"subscription.plan": "pro"})
+    churn_pct = round((cancelled_active / pro_users) * 100, 1) if pro_users else 0
+    return {
+        "dau": dau, "wau": wau, "mau": mau,
+        "new_signups_24h": new_24h, "new_signups_7d": new_7d,
+        "wau_dau_ratio": round(wau / dau, 2) if dau else 0,
+        "scheduled_to_churn": cancelled_active,
+        "churn_pct": churn_pct,
+    }
+
+
+@api.get("/admin/health")
+async def admin_health(user=Depends(admin_only)):
+    """System self-test for the admin to verify everything is wired up.
+    Probes Mongo, the LLM key, and Stripe."""
+    out: Dict[str, Any] = {"ok": True, "checks": {}}
+    # Mongo
+    try:
+        await db.command("ping")
+        out["checks"]["mongo"] = {"ok": True}
+    except Exception as e:  # noqa: BLE001
+        out["ok"] = False
+        out["checks"]["mongo"] = {"ok": False, "error": str(e)[:200]}
+    # LLM key sanity
+    out["checks"]["emergent_llm_key"] = {
+        "ok": bool(EMERGENT_LLM_KEY),
+        "configured": bool(EMERGENT_LLM_KEY),
+    }
+    # Stripe key mode
+    key = STRIPE_API_KEY or ""
+    stripe_mode = "live" if key.startswith("sk_live_") else (
+        "test" if key.startswith("sk_test_") and key != "sk_test_emergent" else "dev_fallback")
+    out["checks"]["stripe"] = {"ok": True, "mode": stripe_mode}
+    # JWT
+    out["checks"]["jwt"] = {"ok": bool(JWT_SECRET) and len(JWT_SECRET) >= 16}
+    # Indexes (best-effort)
+    try:
+        await db.users.create_index("email", unique=True)
+        await db.users.create_index("id", unique=True)
+        await db.metric_summaries.create_index([("user_id", 1), ("metric", 1)])
+        await db.sync_events.create_index([("user_id", 1), ("created_at", -1)])
+        await db.connectors.create_index([("user_id", 1), ("connector_id", 1)])
+        await db.metric_primary.create_index([("user_id", 1), ("device_id", 1), ("metric", 1)])
+        await db.user_devices.create_index([("user_id", 1), ("device_id", 1)])
+        out["checks"]["indexes"] = {"ok": True}
+    except Exception as e:  # noqa: BLE001
+        out["checks"]["indexes"] = {"ok": False, "error": str(e)[:200]}
+    out["timestamp"] = datetime.now(timezone.utc).isoformat()
+    return out
+
+
+@api.get("/admin/users/{user_id}")
+async def admin_user_detail(user_id: str, user=Depends(admin_only)):
+    """Full deep-dive on a single user — subscription, watches, connectors,
+    devices and recent activity. Powers the admin user-detail drawer."""
+    target = await db.users.find_one({"id": user_id}, {"_id": 0, "password": 0})
+    if not target:
+        raise HTTPException(404, "User not found")
+    watches = await db.watches.find({"user_id": user_id}, {"_id": 0, "user_id": 0}).to_list(20)
+    connectors = await db.connectors.find(
+        {"user_id": user_id}, {"_id": 0, "user_id": 0}
+    ).to_list(50)
+    devices = await db.user_devices.find(
+        {"user_id": user_id}, {"_id": 0, "user_id": 0}
+    ).sort("last_seen_at", -1).to_list(20)
+    recent_syncs = await db.sync_events.find(
+        {"user_id": user_id}, {"_id": 0}
+    ).sort("created_at", -1).to_list(20)
+    goals = await db.goals.find({"user_id": user_id}, {"_id": 0, "user_id": 0}).to_list(20)
+    return {
+        "user": serialize_user(target),
+        "watches": watches,
+        "connectors_connected": [c for c in connectors if c.get("connected")],
+        "connectors_total": len(connectors),
+        "devices": devices,
+        "recent_syncs": recent_syncs,
+        "goals": goals,
+    }
+
+
+@api.delete("/admin/users/{user_id}")
+async def admin_delete_user(user_id: str, user=Depends(admin_only)):
+    """Hard-delete a user and all their data. Used for GDPR right-to-erase
+    requests. The admin account cannot delete itself."""
+    if user_id == user["id"]:
+        raise HTTPException(400, "Admins cannot delete their own account")
+    target = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(404, "User not found")
+    collections_to_clean = [
+        "watches", "metric_summaries", "sync_prefs", "sync_events",
+        "conflict_policy", "goals", "insights", "metric_primary",
+        "connectors", "user_devices", "notifications", "push_tokens",
+        "migration_jobs", "notif_bridge_settings", "notif_bridge_log",
+        "health_setup",
+    ]
+    for coll_name in collections_to_clean:
+        await db[coll_name].delete_many({"user_id": user_id})
+    await db.users.delete_one({"id": user_id})
+    log.info(f"Admin {user['email']} deleted user {target['email']}")
+    return {"ok": True, "deleted_user_id": user_id, "deleted_email": target["email"]}
+
+
 # ---------- Privacy/legal endpoints (raw markdown for external indexing) ----------
 @api.get("/legal/privacy")
 async def get_privacy():

@@ -12,10 +12,10 @@ import AppText from '@/src/components/AppText';
 import GlassCard from '@/src/components/GlassCard';
 import PrimaryButton from '@/src/components/PrimaryButton';
 import AuroraBackground from '@/src/components/AuroraBackground';
-import { api, type AdminStats, type User } from '@/src/api/client';
+import { api, type AdminStats, type User, type AdminConnectorStat, type AdminDeviceStats, type AdminEngagement, type AdminHealthReport, type AdminUserDetail } from '@/src/api/client';
 import { useAuth } from '@/src/context/AuthContext';
 
-type Tab = 'overview' | 'users' | 'broadcast' | 'audit';
+type Tab = 'overview' | 'users' | 'connectors' | 'engagement' | 'broadcast' | 'audit' | 'health';
 
 export default function AdminPortal() {
   const { logout } = useAuth();
@@ -28,11 +28,29 @@ export default function AdminPortal() {
   const [broadcastTitle, setBroadcastTitle] = useState('');
   const [broadcastBody, setBroadcastBody] = useState('');
   const [busy, setBusy] = useState(false);
+  const [connectorStats, setConnectorStats] = useState<AdminConnectorStat[]>([]);
+  const [deviceStats, setDeviceStats] = useState<AdminDeviceStats | null>(null);
+  const [engagement, setEngagement] = useState<AdminEngagement | null>(null);
+  const [health, setHealth] = useState<AdminHealthReport | null>(null);
+  const [billingHealth, setBillingHealth] = useState<any | null>(null);
+  const [userDetail, setUserDetail] = useState<AdminUserDetail | null>(null);
+  const [userDetailLoading, setUserDetailLoading] = useState(false);
 
   const loadAll = useCallback(async () => {
     try {
-      const [s, u, a] = await Promise.all([api.adminStats(), api.adminUsers(), api.adminAudit()]);
+      const [s, u, a, c, d, e, h, bh] = await Promise.all([
+        api.adminStats(),
+        api.adminUsers(),
+        api.adminAudit(),
+        api.adminConnectorStats().catch(() => ({ connectors: [] })),
+        api.adminDeviceStats().catch(() => null),
+        api.adminEngagement().catch(() => null),
+        api.adminSystemHealth().catch(() => null),
+        api.adminBillingHealth().catch(() => null),
+      ]);
       setStats(s); setUsers(u); setAudit(a);
+      setConnectorStats(c.connectors); setDeviceStats(d);
+      setEngagement(e); setHealth(h); setBillingHealth(bh);
     } catch (e: any) {
       console.warn(e);
     }
@@ -52,6 +70,38 @@ export default function AdminPortal() {
   const cancelSub = async (uid: string) => {
     await api.adminCancelSub(uid, true);
     await loadAll();
+  };
+
+  const openUserDetail = async (uid: string) => {
+    setUserDetail(null);
+    setUserDetailLoading(true);
+    try {
+      const d = await api.adminUserDetail(uid);
+      setUserDetail(d);
+    } catch (e: any) {
+      Alert.alert('Failed', e?.message ?? 'Could not load user');
+    } finally {
+      setUserDetailLoading(false);
+    }
+  };
+
+  const deleteUser = async (uid: string, email: string) => {
+    const confirm = Platform.OS === 'web'
+      ? (globalThis as any).confirm?.(`Permanently delete ${email}? This wipes all data and cannot be undone.`)
+      : await new Promise<boolean>((res) => Alert.alert(
+          'Delete user', `Permanently delete ${email}? This wipes all data and cannot be undone.`,
+          [{ text: 'Cancel', onPress: () => res(false), style: 'cancel' },
+           { text: 'Delete', onPress: () => res(true), style: 'destructive' }],
+        ));
+    if (!confirm) return;
+    try {
+      await api.adminDeleteUser(uid);
+      setUserDetail(null);
+      await loadAll();
+      Alert.alert('Deleted', `${email} has been removed.`);
+    } catch (e: any) {
+      Alert.alert('Failed', e?.message ?? 'Could not delete');
+    }
   };
 
   const broadcast = async () => {
@@ -97,8 +147,11 @@ export default function AdminPortal() {
           {([
             { k: 'overview', label: 'Overview', icon: 'stats-chart' },
             { k: 'users', label: 'Users', icon: 'people' },
+            { k: 'connectors', label: 'Connectors', icon: 'apps' },
+            { k: 'engagement', label: 'Engagement', icon: 'pulse' },
             { k: 'broadcast', label: 'Broadcast', icon: 'megaphone' },
             { k: 'audit', label: 'Audit', icon: 'shield-checkmark' },
+            { k: 'health', label: 'Health', icon: 'medkit' },
           ] as { k: Tab; label: string; icon: keyof typeof Ionicons.glyphMap }[]).map((t) => (
             <Pressable
               key={t.k}
@@ -161,7 +214,12 @@ export default function AdminPortal() {
                 </Pressable>
               </View>
               {users.map((u, i) => (
-                <View key={u.id} style={[styles.userRow, i !== users.length - 1 && styles.divider]} testID={`admin-user-${i}`}>
+                <Pressable
+                  key={u.id}
+                  onPress={() => openUserDetail(u.id)}
+                  style={[styles.userRow, i !== users.length - 1 && styles.divider]}
+                  testID={`admin-user-${i}`}
+                >
                   <View style={{ flex: 1 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                       <AppText weight="semi" size={13}>{u.name || u.email}</AppText>
@@ -187,9 +245,10 @@ export default function AdminPortal() {
                           <Ionicons name="diamond" size={16} color={theme.colors.teal} />
                         </Pressable>
                       )}
+                      <Ionicons name="chevron-forward" size={14} color={theme.colors.textMute} style={{ alignSelf: 'center' }} />
                     </View>
                   )}
-                </View>
+                </Pressable>
               ))}
               {users.length === 0 && (
                 <AppText size={12} color={theme.colors.textDim} style={{ padding: 12, textAlign: 'center' }}>
@@ -277,9 +336,302 @@ export default function AdminPortal() {
               </GlassCard>
             </>
           )}
+          {tab === 'connectors' && (
+            <GlassCard testID="admin-connectors-card">
+              <AppText size={11} color={theme.colors.textDim} weight="med" style={styles.section}>
+                Adoption by data source
+              </AppText>
+              {connectorStats.length === 0 && (
+                <AppText size={12} color={theme.colors.textDim} style={{ padding: 8 }}>
+                  No connector data yet — users haven't connected any apps.
+                </AppText>
+              )}
+              {connectorStats.map((c, i) => (
+                <View key={c.connector_id} style={[styles.connectorRow, i !== connectorStats.length - 1 && styles.divider]} testID={`admin-connector-${c.connector_id}`}>
+                  <View style={[styles.connectorIcon, { backgroundColor: `${c.color}20`, borderColor: `${c.color}50` }]}>
+                    <Ionicons name={c.icon as any} size={16} color={c.color} />
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <AppText weight="semi" size={13}>{c.name}</AppText>
+                    <AppText size={10} color={theme.colors.textDim} style={{ marginTop: 2 }}>
+                      {c.connected_seats}/{c.total_seats} users connected
+                    </AppText>
+                    <View style={styles.adoptionTrack}>
+                      <View style={[styles.adoptionFill, { width: `${c.adoption_pct}%`, backgroundColor: c.color }]} />
+                    </View>
+                  </View>
+                  <AppText weight="heading" size={16} color={c.color} style={{ marginLeft: 10 }}>
+                    {c.adoption_pct}%
+                  </AppText>
+                </View>
+              ))}
+              {deviceStats && (
+                <View style={styles.deviceSummary} testID="admin-device-stats">
+                  <AppText size={11} color={theme.colors.textDim} weight="med" style={styles.section}>
+                    Device profiles
+                  </AppText>
+                  <View style={styles.deviceStatsGrid}>
+                    <DeviceStat label="Total devices" value={deviceStats.total_devices} />
+                    <DeviceStat label="Multi-device users" value={deviceStats.users_with_devices} />
+                    <DeviceStat label="Max / user" value={deviceStats.max_devices_per_user} />
+                    <DeviceStat label="Avg / user" value={deviceStats.avg_devices_per_user.toFixed(2)} />
+                  </View>
+                  {deviceStats.platforms.length > 0 && (
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+                      {deviceStats.platforms.map((p) => (
+                        <View key={p.platform} style={styles.platformChip}>
+                          <AppText size={10} color={theme.colors.text}>{p.platform}: {p.count}</AppText>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              )}
+            </GlassCard>
+          )}
+
+          {tab === 'engagement' && (
+            <View testID="admin-engagement-card">
+              <View style={styles.statsGrid}>
+                <Stat label="DAU" value={engagement?.dau ?? '—'} icon="flash-outline" tone="#2DD4BF" testID="stat-dau" />
+                <Stat label="WAU" value={engagement?.wau ?? '—'} icon="calendar-outline" tone="#3B82F6" testID="stat-wau" />
+                <Stat label="MAU" value={engagement?.mau ?? '—'} icon="calendar-number-outline" tone="#8B5CF6" testID="stat-mau" />
+                <Stat label="WAU / DAU" value={engagement?.wau_dau_ratio ?? '—'} icon="repeat-outline" tone="#10B981" testID="stat-wau-dau" />
+                <Stat label="New (24h)" value={engagement?.new_signups_24h ?? '—'} icon="person-add-outline" tone="#F59E0B" testID="stat-new-24h" />
+                <Stat label="New (7d)" value={engagement?.new_signups_7d ?? '—'} icon="people-outline" tone="#EC4899" testID="stat-new-7d" />
+              </View>
+              <GlassCard style={{ marginTop: theme.space.md }}>
+                <AppText size={11} color={theme.colors.textDim} weight="med" style={styles.section}>
+                  Churn signals
+                </AppText>
+                <View style={styles.churnRow}>
+                  <View style={{ flex: 1 }}>
+                    <AppText size={12} color={theme.colors.textDim}>Subscriptions scheduled to cancel</AppText>
+                    <AppText weight="heading" size={28} color={theme.colors.warning} style={{ marginTop: 6 }}>
+                      {engagement?.scheduled_to_churn ?? '—'}
+                    </AppText>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <AppText size={12} color={theme.colors.textDim}>Churn %</AppText>
+                    <AppText weight="heading" size={28} color={theme.colors.danger} style={{ marginTop: 6 }}>
+                      {engagement?.churn_pct ?? '—'}%
+                    </AppText>
+                  </View>
+                </View>
+              </GlassCard>
+            </View>
+          )}
+
+          {tab === 'health' && (
+            <View testID="admin-health-card">
+              <GlassCard>
+                <AppText size={11} color={theme.colors.textDim} weight="med" style={styles.section}>
+                  System self-test
+                </AppText>
+                <View style={styles.healthSummary}>
+                  <Ionicons
+                    name={health?.ok ? 'checkmark-circle' : 'alert-circle'}
+                    size={28}
+                    color={health?.ok ? theme.colors.emerald : theme.colors.danger}
+                  />
+                  <View style={{ marginLeft: 12, flex: 1 }}>
+                    <AppText weight="heading" size={18}>
+                      {health?.ok ? 'All systems operational' : 'Issues detected'}
+                    </AppText>
+                    <AppText size={10} color={theme.colors.textDim} style={{ marginTop: 2 }}>
+                      {health?.timestamp ? `Last checked ${new Date(health.timestamp).toLocaleString()}` : '—'}
+                    </AppText>
+                  </View>
+                  <Pressable onPress={loadAll} hitSlop={6}>
+                    <Ionicons name="refresh" size={20} color={theme.colors.textDim} />
+                  </Pressable>
+                </View>
+                {health && Object.entries(health.checks).map(([k, v]: any, i) => (
+                  <View key={k} style={[styles.healthRow, i !== Object.entries(health.checks).length - 1 && styles.divider]} testID={`admin-health-${k}`}>
+                    <Ionicons
+                      name={v.ok ? 'checkmark-circle' : 'alert-circle'}
+                      size={16}
+                      color={v.ok ? theme.colors.emerald : theme.colors.danger}
+                    />
+                    <AppText size={12} weight="semi" style={{ marginLeft: 8, flex: 1 }}>{k}</AppText>
+                    {v.mode && (
+                      <View style={styles.modeChip}>
+                        <AppText size={9} color={theme.colors.textDim}>{v.mode}</AppText>
+                      </View>
+                    )}
+                    {v.error && (
+                      <AppText size={10} color={theme.colors.danger} numberOfLines={1} style={{ maxWidth: 150 }}>
+                        {v.error}
+                      </AppText>
+                    )}
+                  </View>
+                ))}
+              </GlassCard>
+
+              {billingHealth && (
+                <GlassCard style={{ marginTop: theme.space.md }}>
+                  <AppText size={11} color={theme.colors.textDim} weight="med" style={styles.section}>
+                    Stripe billing
+                  </AppText>
+                  <View style={styles.billingRow}>
+                    <View style={{ flex: 1 }}>
+                      <AppText size={11} color={theme.colors.textDim}>Mode</AppText>
+                      <View style={[styles.modeChip, {
+                        backgroundColor: billingHealth.stripe_key_mode === 'live' ? 'rgba(16,185,129,0.15)'
+                          : billingHealth.stripe_key_mode === 'test' ? 'rgba(59,130,246,0.15)'
+                          : 'rgba(245,158,11,0.15)',
+                        marginTop: 4, alignSelf: 'flex-start',
+                      }]}>
+                        <AppText size={10} weight="semi">{billingHealth.stripe_key_mode}</AppText>
+                      </View>
+                    </View>
+                    <View style={{ flex: 2 }}>
+                      <AppText size={11} color={theme.colors.textDim}>API key</AppText>
+                      <AppText size={11} style={{ fontFamily: 'monospace', marginTop: 4 }}>{billingHealth.stripe_key_masked}</AppText>
+                    </View>
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12 }}>
+                    <Ionicons
+                      name={billingHealth.webhook_secret_configured ? 'checkmark-circle' : 'alert-circle'}
+                      size={14}
+                      color={billingHealth.webhook_secret_configured ? theme.colors.emerald : theme.colors.warning}
+                    />
+                    <AppText size={11} color={theme.colors.textDim} style={{ marginLeft: 6 }}>
+                      Webhook signing secret {billingHealth.webhook_secret_configured ? 'configured' : 'NOT set (dev only)'}
+                    </AppText>
+                  </View>
+                  {billingHealth.stripe_reachable === false && billingHealth.stripe_error && (
+                    <AppText size={11} color={theme.colors.danger} style={{ marginTop: 8 }}>
+                      Stripe API error: {billingHealth.stripe_error}
+                    </AppText>
+                  )}
+                </GlassCard>
+              )}
+            </View>
+          )}
+
           <View style={{ height: 60 }} />
         </ScrollView>
       </SafeAreaView>
+
+      {/* User detail modal */}
+      <Modal visible={!!userDetail || userDetailLoading} transparent animationType="slide" onRequestClose={() => setUserDetail(null)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard} testID="admin-user-detail-modal">
+            <View style={styles.modalHeader}>
+              <AppText weight="heading" size={18}>{userDetail?.user.name || userDetail?.user.email || 'Loading…'}</AppText>
+              <Pressable onPress={() => setUserDetail(null)} hitSlop={8} testID="admin-user-detail-close">
+                <Ionicons name="close" size={22} color={theme.colors.textDim} />
+              </Pressable>
+            </View>
+            <ScrollView style={{ maxHeight: 520 }}>
+              {userDetail && (
+                <>
+                  <AppText size={11} color={theme.colors.textDim} style={{ marginTop: 4 }}>
+                    {userDetail.user.email}
+                  </AppText>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 12 }}>
+                    <Pill label={`Plan: ${userDetail.user.subscription?.plan || 'free'}`} tone={userDetail.user.subscription?.plan === 'pro' ? theme.colors.teal : theme.colors.textDim} />
+                    <Pill label={`Status: ${userDetail.user.subscription?.status || '—'}`} tone={theme.colors.textDim} />
+                    <Pill label={`Watches: ${userDetail.watches.length}`} tone={theme.colors.text} />
+                    <Pill label={`Connectors: ${userDetail.connectors_connected.length}/${userDetail.connectors_total}`} tone={theme.colors.text} />
+                    <Pill label={`Devices: ${userDetail.devices.length}`} tone={theme.colors.text} />
+                    <Pill label={`Goals: ${userDetail.goals.length}`} tone={theme.colors.text} />
+                  </View>
+
+                  <AppText size={11} color={theme.colors.textDim} weight="med" style={[styles.section, { marginTop: 18 }]}>
+                    Connected apps
+                  </AppText>
+                  {userDetail.connectors_connected.length === 0 && (
+                    <AppText size={11} color={theme.colors.textMute}>None connected</AppText>
+                  )}
+                  {userDetail.connectors_connected.map((c: any) => (
+                    <View key={c.connector_id} style={styles.detailItem}>
+                      <Ionicons name={c.icon as any} size={14} color={c.color} />
+                      <AppText size={11} style={{ marginLeft: 8, flex: 1 }}>{c.name}</AppText>
+                      <AppText size={10} color={theme.colors.textMute}>
+                        {c.last_sync_at ? new Date(c.last_sync_at).toLocaleString() : '—'}
+                      </AppText>
+                    </View>
+                  ))}
+
+                  <AppText size={11} color={theme.colors.textDim} weight="med" style={[styles.section, { marginTop: 18 }]}>
+                    Devices
+                  </AppText>
+                  {userDetail.devices.length === 0 && (
+                    <AppText size={11} color={theme.colors.textMute}>No device profiles yet</AppText>
+                  )}
+                  {userDetail.devices.map((d) => (
+                    <View key={d.device_id} style={styles.detailItem}>
+                      <Ionicons name={d.platform === 'ios' ? 'logo-apple' : d.platform === 'android' ? 'logo-android' : 'globe'} size={14} color={theme.colors.teal} />
+                      <View style={{ marginLeft: 8, flex: 1 }}>
+                        <AppText size={11} weight="semi">{d.label}</AppText>
+                        <AppText size={9} color={theme.colors.textMute}>{d.device_id.slice(0, 16)}…</AppText>
+                      </View>
+                      <AppText size={10} color={theme.colors.textMute}>
+                        {d.last_seen_at ? new Date(d.last_seen_at).toLocaleDateString() : '—'}
+                      </AppText>
+                    </View>
+                  ))}
+
+                  <AppText size={11} color={theme.colors.textDim} weight="med" style={[styles.section, { marginTop: 18 }]}>
+                    Recent syncs
+                  </AppText>
+                  {userDetail.recent_syncs.slice(0, 10).map((e: any, i: number) => (
+                    <View key={i} style={styles.detailItem}>
+                      <Ionicons name="sync" size={12} color={theme.colors.teal} />
+                      <AppText size={11} style={{ marginLeft: 8, flex: 1 }}>{e.metric}</AppText>
+                      <AppText size={10} color={theme.colors.textMute}>
+                        {new Date(e.created_at).toLocaleString()}
+                      </AppText>
+                    </View>
+                  ))}
+
+                  {!userDetail.user.is_admin && (
+                    <View style={{ marginTop: 24 }}>
+                      <PrimaryButton
+                        title="Delete user (GDPR)"
+                        variant="danger"
+                        onPress={() => deleteUser(userDetail.user.id, userDetail.user.email)}
+                        icon={<Ionicons name="trash" size={14} color="#fff" />}
+                        testID="admin-user-detail-delete"
+                      />
+                    </View>
+                  )}
+                </>
+              )}
+              {userDetailLoading && !userDetail && (
+                <AppText size={12} color={theme.colors.textDim} style={{ padding: 20, textAlign: 'center' }}>
+                  Loading user…
+                </AppText>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+function Pill({ label, tone }: { label: string; tone: string }) {
+  return (
+    <View style={{
+      paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999,
+      backgroundColor: 'rgba(255,255,255,0.04)',
+      borderWidth: 1, borderColor: theme.colors.border,
+    }}>
+      <AppText size={10} color={tone}>{label}</AppText>
+    </View>
+  );
+}
+
+function DeviceStat({ label, value }: { label: string; value: number | string }) {
+  return (
+    <View style={{ flex: 1, minWidth: 110, padding: 8, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.03)' }}>
+      <AppText size={9} color={theme.colors.textMute} style={{ letterSpacing: 1 }}>
+        {label.toUpperCase()}
+      </AppText>
+      <AppText weight="heading" size={18} style={{ marginTop: 4 }}>{value}</AppText>
     </View>
   );
 }
@@ -341,4 +693,52 @@ const styles = StyleSheet.create({
     outlineStyle: 'none' as any,
   },
   eventRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8 },
+  connectorRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
+  connectorIcon: {
+    width: 32, height: 32, borderRadius: 10, borderWidth: 1,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  adoptionTrack: {
+    marginTop: 6, height: 4, borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.05)', overflow: 'hidden',
+  },
+  adoptionFill: { height: '100%', borderRadius: 2 },
+  deviceSummary: {
+    marginTop: 16, paddingTop: 16,
+    borderTopWidth: 1, borderTopColor: theme.colors.border,
+  },
+  deviceStatsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  platformChip: {
+    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999,
+    backgroundColor: 'rgba(45,212,191,0.10)',
+    borderWidth: 1, borderColor: 'rgba(45,212,191,0.3)',
+  },
+  churnRow: { flexDirection: 'row', gap: 12, marginTop: 4 },
+  healthSummary: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
+  healthRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8 },
+  modeChip: {
+    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1, borderColor: theme.colors.border,
+  },
+  billingRow: { flexDirection: 'row', gap: 12 },
+  modalBackdrop: {
+    flex: 1, justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+  },
+  modalCard: {
+    backgroundColor: theme.colors.bg2,
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: theme.space.lg,
+    borderWidth: 1, borderColor: theme.colors.border,
+    maxHeight: '85%' as any,
+  },
+  modalHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  detailItem: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 6, paddingHorizontal: 4,
+  },
 });
