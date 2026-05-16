@@ -220,6 +220,13 @@
 
 ## 8. Changelog
 
+### v5.2 (May 2026 — Phase C polish)
+- ✅ Bulk "Connect all available" affordance on /app-connectors (`POST /api/connectors/connect-all`) — filters by platform on native, connects every disconnected one on web
+- ✅ Per-device primary-source overrides — `device_id` column on `metric_primary`, scoped writes via `POST /api/connectors/primary` body; `GET /api/metrics/availability?device_id=...` returns per-device-overridden primaries
+- ✅ Device profile registration — `POST /api/devices/register`, `GET /api/devices`; client uses `useDevice()` hook (SecureStore on native, IndexedDB-backed AsyncStorage on web)
+- ✅ Native CoreBluetooth proximity scan wired in — `HealthBridge.scanProximity()` uses `react-native-ble-plx` on real iOS/Android dev builds with iBeacon path-loss RSSI→distance; falls back to simulated `/api/watches/{id}/proximity` on web/Expo Go. UI shows a "NATIVE BLE SCAN" vs "SIMULATED" badge so testers know which path ran.
+- ✅ Fixed pre-existing `MetricLiteral` mismatch (was Literal of 8 names; expanded to all 33) — `/api/metrics/summary` now returns 200 instead of 500
+
 ### v5.1 (May 2026 — Phase C complete)
 - ✅ Watch proximity scan (animated radar) before any Connect Watch action — `POST /api/watches/{id}/proximity`
 - ✅ Connectors backend: 9 connectors auto-seeded disconnected per user; connect/disconnect via `/api/connectors/*`
